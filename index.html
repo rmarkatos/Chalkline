@@ -1,2 +1,3223 @@
-# Chalkline
-Realtime White Board with Robust Equation Editor
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chalkline Equation Board</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:ital,wght@0,400;0,500;1,400;1,500&display=swap">
+<style>
+:root{
+  --paper:#E9EDEF; --surface:#FCFDFD; --surface-2:#F1F5F6;
+  --ink:#111A1E; --ink-2:#3D4C53; --muted:#6B7C85;
+  --line:#C8D3D7; --line-soft:#DEE6E8;
+  --accent:#0F766E; --accent-soft:#D9EBE8; --accent-ink:#0B5D56;
+  --slot:#B45309; --slot-soft:#F7E9D6;
+  --sel:#BFE3DD;
+  --shadow:0 1px 2px rgba(17,26,30,.06), 0 8px 24px rgba(17,26,30,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0C1917; --surface:#122320; --surface-2:#182E2A;
+    --ink:#E9F1EE; --ink-2:#B7C8C3; --muted:#87A09A;
+    --line:#274039; --line-soft:#1D332E;
+    --accent:#5FCBB7; --accent-soft:#183732; --accent-ink:#8FE0D0;
+    --slot:#E0A458; --slot-soft:#2C2519;
+    --sel:#22463F;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0C1917; --surface:#122320; --surface-2:#182E2A;
+  --ink:#E9F1EE; --ink-2:#B7C8C3; --muted:#87A09A;
+  --line:#274039; --line-soft:#1D332E;
+  --accent:#5FCBB7; --accent-soft:#183732; --accent-ink:#8FE0D0;
+  --slot:#E0A458; --slot-soft:#2C2519;
+  --sel:#22463F;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box}
+/* a display: rule beats the browser's default [hidden] styling, so state it */
+[hidden]{display:none !important}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit}
+
+/* ---------- chrome ---------- */
+.topbar{
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding:10px 20px; background:var(--surface); border-bottom:1px solid var(--line);
+}
+.brand{display:flex; align-items:baseline; gap:10px; margin-right:auto}
+.brand h1{
+  margin:0; font-size:15px; font-weight:600; letter-spacing:-.01em;
+}
+.brand .tag{
+  font-size:13px; color:var(--muted); letter-spacing:0;
+}
+.barbtns{display:flex; gap:8px; flex-wrap:wrap}
+.btn{
+  background:var(--surface-2); border:1px solid var(--line); border-radius:6px;
+  padding:6px 11px; font-size:13px; cursor:pointer; line-height:1.2;
+}
+.btn:hover{border-color:var(--accent); color:var(--accent-ink)}
+.btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.btn.on{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink)}
+
+/* ---------- layout ---------- */
+.wrap{display:grid; grid-template-columns:minmax(0,1fr) 312px; gap:0; min-height:calc(100vh - 53px)}
+@media (max-width:900px){ .wrap{grid-template-columns:minmax(0,1fr)} }
+
+.stage{display:flex; flex-direction:column; min-width:0}
+.boardwrap{flex:1; padding:22px 20px 8px; min-width:0}
+.board.armed{border-color:var(--accent)}
+.board{
+  background:var(--surface); border:1px solid var(--line); border-radius:10px;
+  box-shadow:var(--shadow); padding:4px 0 8px; min-height:320px;
+}
+
+/* ---------- lines ---------- */
+.line{
+  display:grid; grid-template-columns:44px minmax(0,1fr) 34px; align-items:center;
+  gap:8px; padding:5px 12px 5px 0; min-height:48px;
+}
+.line + .line{border-top:1px solid var(--line-soft)}
+.line.focus .gutter b{background:var(--accent); color:var(--surface); border-color:var(--accent)}
+.gutter{display:flex; justify-content:flex-end; align-items:center; height:38px; padding-right:2px}
+.gutter b{
+  font-weight:500; font-size:11px; font-variant-numeric:tabular-nums;
+  min-width:22px; height:22px; display:grid; place-items:center;
+  border:1px solid var(--line); border-radius:11px; color:var(--muted); background:var(--surface);
+}
+/* overflow-x:auto makes the browser clip the vertical axis too, which crops
+   tall glyphs — the padding keeps their ink inside the clip box. */
+.linebody{display:flex; align-items:center; min-height:38px; min-width:0; overflow-x:auto; padding:10px 0}
+.linedel{
+  opacity:0; border:none; background:none; cursor:pointer; color:var(--muted);
+  font-size:16px; line-height:1; padding:6px; border-radius:6px; align-self:center;
+}
+.line:hover .linedel, .line.focus .linedel{opacity:1}
+.linedel:hover{color:var(--slot); background:var(--surface-2)}
+.noteinput{
+  width:100%; border:none; background:none; color:var(--ink-2); font:inherit;
+  font-size:15px; padding:6px 2px; font-style:normal;
+}
+.noteinput:focus{outline:none; border-bottom:1px solid var(--accent)}
+
+/* ---------- math rendering ---------- */
+/* Layout model: every SLOT container (.num, .den, .sup, .dbody, grid cell…)
+   does its own positioning, and the .ml block inside it restores ordinary
+   inline flow — so vertical-align on nested structures is measured against
+   the local baseline, not against the tallest thing on the whole row. */
+.field{
+  font-family:"STIX Two Text",Cambria,"Times New Roman",serif;
+  font-size:27px; line-height:1.16; cursor:text; padding:2px 6px 2px 4px;
+  min-width:40px; min-height:1.2em; display:inline-block;
+  border-radius:6px; white-space:nowrap;
+}
+.field:focus{outline:none}
+.ml{display:block; white-space:nowrap}
+.at{font-style:italic; padding-right:.02em}          /* variable */
+.dg{font-style:normal; font-variant-numeric:lining-nums}
+.op{font-style:normal; margin:0 .17em}
+.op.unary{margin-left:0; margin-right:.04em}
+.rel{font-style:normal; margin:0 .22em}
+.punct{font-style:normal; margin-right:.16em}
+.fn{font-style:normal; margin-right:.1em; padding-left:.06em}
+.sym{font-style:normal}
+.sel{background:var(--sel); border-radius:2px}
+/* words inside a maths line: upright, sans, and at reading size rather than
+   the 27px the mathematics needs */
+.tx{
+  font-family:"IBM Plex Sans",-apple-system,"Segoe UI",sans-serif;
+  font-style:normal; font-size:.72em; white-space:pre; letter-spacing:0;
+  vertical-align:baseline;
+}
+.spc{display:inline-block; height:1px; vertical-align:middle}
+
+.cursor{
+  display:inline-block; width:1.5px; height:1.05em; background:var(--accent);
+  margin:0 -0.75px; vertical-align:middle; animation:blink 1.05s step-end infinite;
+}
+.cursor.words{background:var(--slot); width:2px}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){ .cursor{animation:none} }
+
+.ph{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:.62em; height:.92em; border:1px dashed var(--slot);
+  border-radius:3px; background:var(--slot-soft); vertical-align:middle;
+}
+/* the box the caret is sitting in grows to hold it, and anything half-typed */
+.ph.active{width:auto; min-width:.62em; padding:0 .06em; border-color:var(--slot)}
+.ph .cursor{height:.66em; margin:0; vertical-align:middle}
+.ph .pending{font-size:.42em; padding:.2em .28em; margin:0 .06em}
+
+/* raw LaTeX being typed, before it turns into mathematics */
+.pending{
+  display:inline-block; vertical-align:middle; font-style:normal;
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-size:.5em;
+  background:var(--slot-soft); color:var(--slot); border:1px solid var(--slot);
+  border-radius:4px; padding:.25em .35em; margin:0 .1em; letter-spacing:.01em;
+  white-space:pre;
+}
+
+.frac{display:inline-block; vertical-align:middle; margin:0 .14em; text-align:center}
+.frac>.num{display:block; padding:0 .3em .1em}
+.frac>.bar{display:block; height:1.3px; background:currentColor; border-radius:1px}
+.frac>.den{display:block; padding:.12em .3em 0}
+.frac .frac{font-size:.94em}
+
+.blank{display:inline-block}
+.sup{display:inline-block; font-size:.72em; vertical-align:.66em; margin:0 .05em}
+.sub{display:inline-block; font-size:.72em; vertical-align:-.3em; margin:0 .05em}
+
+.sqrt{display:inline-flex; align-items:stretch; margin:0 .12em; vertical-align:middle}
+.sqrt>svg{width:.6em; flex:none; overflow:visible}
+.sqrt>.rbody{
+  border-top:1.3px solid currentColor; padding:.15em .22em .02em .06em;
+  display:flex; align-items:center;
+}
+.root{display:inline-flex; align-items:flex-start; margin:0 .12em; vertical-align:middle}
+.root>.idx{display:block; font-size:.58em; margin-right:-.36em; margin-top:-.05em; z-index:1}
+.root>.sqrt{vertical-align:baseline; margin:0}
+
+.delim{display:inline-flex; align-items:center; vertical-align:middle}
+.delim>.dl,.delim>.dr{
+  display:inline-block; transform-origin:center center; font-style:normal;
+  will-change:transform; flex:none;
+}
+.delim>.dbody{display:flex; align-items:center; padding:0 .06em}
+
+.mat{display:inline-flex; align-items:center; vertical-align:middle; margin:0 .08em}
+.mat>.dl,.mat>.dr{display:inline-block; transform-origin:center center; font-style:normal; flex:none}
+.matgrid{display:grid; row-gap:.2em; column-gap:.6em; align-items:center; justify-items:center; padding:.08em .2em}
+.cases .matgrid{justify-items:start; column-gap:.7em}
+
+.bigop{display:inline-flex; margin:0 .2em; vertical-align:middle}
+.bigop.stack{flex-direction:column; align-items:center}
+.bigop.side{flex-direction:row; align-items:stretch}
+.bigop>.bsym{font-size:1.42em; line-height:.95; font-style:normal}
+.bigop>.bsym.tall{font-size:2.5em; line-height:1; font-style:italic; padding:0 .01em}
+.intsvg{height:2.5em; width:.9em; flex:none; display:block; overflow:visible}
+.bigop>.bsym.lim{font-size:1em; font-style:normal; letter-spacing:.01em}
+.bigop>.blim{display:block; font-size:.58em}
+.bigop.limop{vertical-align:baseline}
+.bigop.limop>.blim{font-size:.62em; margin-top:.02em}
+/* Limits on an integral are staggered, not stacked: the ∫ leans right, so the
+   upper limit sits out at the top-right and the lower one tucks in under the
+   glyph's bottom-right. Stacking them at the same x reads as a subscript and
+   superscript on a tall bar, which is not how an integral is set. */
+.blims{
+  display:flex; flex-direction:column; justify-content:space-between;
+  font-size:.62em; padding:.06em 0 .02em; margin-left:-.95em;
+}
+.blims>.blim{display:block; font-size:1em}
+.blims>.up{margin-left:1.0em}
+.blims>.lo{margin-left:.5em}
+
+/* ---------- inspector ---------- */
+.inspector{
+  border-top:1px solid var(--line); background:var(--surface);
+  padding:10px 20px 14px; display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;
+}
+.insp-l{flex:1 1 340px; min-width:0}
+.lbl{
+  font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted);
+  display:block; margin-bottom:5px;
+}
+.tex{
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-size:12.5px;
+  background:var(--surface-2); border:1px solid var(--line-soft); border-radius:6px;
+  padding:9px 11px; color:var(--ink-2); overflow-x:auto; white-space:pre; min-height:36px;
+}
+.mode{
+  display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.09em;
+  padding:2px 7px; border-radius:10px; margin-left:8px; vertical-align:1px;
+  border:1px solid var(--accent); color:var(--accent-ink); background:var(--accent-soft);
+}
+.mode.words{border-color:var(--slot); color:var(--slot); background:var(--slot-soft)}
+.hint{font-size:12px; color:var(--slot); margin-top:6px; line-height:1.45}
+.hint:empty{display:none}
+.keys{flex:0 1 300px; font-size:12px; color:var(--muted); display:grid; gap:3px}
+.keys div{display:flex; gap:8px}
+.keys kbd{
+  font-family:"IBM Plex Mono",monospace; font-size:11px; background:var(--surface-2);
+  border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:1px 5px; color:var(--ink-2);
+  flex:none;
+}
+
+/* ---------- palette ---------- */
+.palette{
+  border-left:1px solid var(--line); background:var(--surface); padding:16px 16px 40px;
+  overflow-y:auto; max-height:calc(100vh - 53px);
+}
+@media (max-width:900px){ .palette{border-left:none; border-top:1px solid var(--line); max-height:none} }
+.pgroup{margin-bottom:16px}
+.pgroup>.lbl{margin-bottom:7px}
+.pgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:6px}
+.pgrid.w2{grid-template-columns:repeat(2,1fr)}
+.pbtn{
+  background:var(--surface-2); border:1px solid var(--line-soft); border-radius:7px;
+  min-height:44px; cursor:pointer; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:2px; padding:5px 3px;
+  transition:border-color .12s, background .12s; color:var(--ink);
+}
+.pbtn.two{min-height:56px}
+.pbtn:hover{border-color:var(--accent); background:var(--accent-soft)}
+.pbtn:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+/* the face is the editor's own renderer, so a button looks like the notation */
+.pbtn .face{
+  font-family:"STIX Two Text",Cambria,"Times New Roman",serif;
+  font-size:15px; line-height:1.15; white-space:nowrap;
+}
+.pbtn .face .ph{width:.5em; height:.78em; border-radius:2px}
+.pbtn .face .intsvg{height:1.7em; width:.62em}
+.pbtn .face .bigop>.bsym{font-size:1.25em}
+.pbtn .sub{
+  font-family:"IBM Plex Sans",sans-serif; font-size:8px; line-height:1.15;
+  text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
+  white-space:normal; text-align:center;
+}
+.pbtn .mini{font-size:11px; display:flex; flex-direction:column; align-items:center; line-height:1.05}
+.pbtn .mini u{text-decoration:none; border-bottom:1px solid currentColor; padding:0 3px}
+
+/* ---------- paste-LaTeX sheet ---------- */
+.modal{
+  position:fixed; inset:0; background:rgba(10,20,18,.42); z-index:50;
+  display:grid; place-items:center; padding:20px;
+}
+.sheet{
+  background:var(--surface); border:1px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow); padding:18px; width:min(620px,100%);
+  display:flex; flex-direction:column; gap:10px;
+}
+.sheet textarea{
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-size:13px; line-height:1.6;
+  background:var(--surface-2); color:var(--ink); border:1px solid var(--line);
+  border-radius:8px; padding:11px 12px; min-height:132px; resize:vertical; width:100%;
+}
+.sheet textarea:focus{outline:2px solid var(--accent); outline-offset:-1px}
+.sheet .warn{font-size:12px; color:var(--slot); min-height:0; line-height:1.45}
+.sheet .warn:empty{display:none}
+.sheetbtns{display:flex; gap:8px; justify-content:flex-end}
+
+.tip{
+  position:fixed; z-index:100; pointer-events:none;
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-size:11.5px;
+  background:var(--ink); color:var(--paper); letter-spacing:.01em;
+  padding:5px 8px; border-radius:6px; white-space:nowrap;
+  box-shadow:0 4px 16px rgba(0,0,0,.22);
+}
+
+
+/* ---------- screens ---------- */
+.screen[hidden]{display:none !important}
+
+/* landing */
+#viewLanding{min-height:100vh; display:grid; place-items:center; padding:24px}
+.join{
+  background:var(--surface); border:1px solid var(--line); border-radius:14px;
+  box-shadow:var(--shadow); padding:30px 30px 24px; width:min(440px,100%);
+}
+.join h1{margin:0; font-size:26px; letter-spacing:-.02em}
+.joinsub{margin:2px 0 22px; color:var(--muted); font-size:14px}
+.fld{display:block; margin-bottom:14px}
+.fld span{
+  display:block; font-size:10px; text-transform:uppercase; letter-spacing:.1em;
+  color:var(--muted); margin-bottom:5px;
+}
+.fld input{
+  width:100%; font:inherit; font-size:15px; padding:9px 11px; color:var(--ink);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+}
+.fld input:focus{outline:2px solid var(--accent); outline-offset:-1px}
+.joinbtns{display:flex; flex-direction:column; gap:9px; margin-top:20px}
+.btn.big{padding:11px 14px; font-size:14px; border-radius:9px}
+.joinnote{font-size:12px; color:var(--muted); line-height:1.5; margin:18px 0 0}
+
+/* teacher grid */
+.gridwrap{padding:20px}
+.joinlink{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;
+  background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:10px 14px;
+}
+.joinlink input{
+  flex:1 1 320px; min-width:0; font-family:"IBM Plex Mono",monospace; font-size:12px;
+  padding:6px 9px; color:var(--ink-2); background:var(--surface-2);
+  border:1px solid var(--line-soft); border-radius:6px;
+}
+.hintline{font-size:12px; color:var(--muted); flex-basis:100%}
+.tiles{
+  display:grid; gap:14px;
+  grid-template-columns:repeat(auto-fill, minmax(290px, 1fr));
+}
+.tile{
+  background:var(--surface); border:1px solid var(--line); border-radius:10px;
+  box-shadow:var(--shadow); overflow:hidden; cursor:pointer; text-align:left;
+  display:flex; flex-direction:column; min-height:150px; padding:0;
+}
+.tile:hover{border-color:var(--accent)}
+.tile:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.tilehead{
+  display:flex; align-items:baseline; gap:8px; padding:9px 12px;
+  border-bottom:1px solid var(--line-soft); background:var(--surface-2);
+}
+.tilehead b{font-size:13px; font-weight:600}
+.tilehead .ago{font-size:10.5px; color:var(--muted); margin-left:auto; font-variant-numeric:tabular-nums}
+.tile.stale{opacity:.55}
+.tile.stale .ago{color:var(--slot)}
+.tilebody{padding:8px 12px 12px; overflow:hidden; flex:1}
+.tilebody .field{font-size:16px; padding:0}
+.tilebody .linebody{padding:3px 0; min-height:0; overflow:hidden}
+.tilebody .line{grid-template-columns:20px minmax(0,1fr); gap:6px; min-height:0; padding:2px 0}
+.tilebody .gutter{height:auto}
+.tilebody .gutter b{min-width:16px; height:16px; font-size:9px; border-radius:8px}
+.tilebody .linedel, .tilebody .cursor{display:none}
+.tilebody .blank{color:var(--muted); font-size:12px; font-style:italic; padding:6px 0}
+.empty{
+  color:var(--muted); font-size:13px; line-height:1.6; max-width:52ch;
+  margin:40px auto; text-align:center;
+}
+.empty b{color:var(--ink-2)}
+
+/* banner shown when the teacher is editing someone else's board */
+.actingbar{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  padding:8px 20px; background:var(--slot-soft); border-bottom:1px solid var(--slot);
+  color:var(--slot); font-size:13px;
+}
+.actingbar b{color:var(--slot)}
+.actingbar .btn{margin-left:auto; border-color:var(--slot); color:var(--slot)}
+
+/* a board that was just changed by someone else */
+@keyframes flashEdit{from{background:var(--slot-soft)} to{background:transparent}}
+.board.flash{animation:flashEdit 1.1s ease-out}
+@media (prefers-reduced-motion:reduce){ .board.flash{animation:none} }
+
+
+/* ---------- problem composer ---------- */
+.composer{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:9px 20px; background:var(--accent-soft); border-bottom:1px solid var(--accent);
+  font-size:13px; color:var(--accent-ink);
+}
+.composer .clabel{font-weight:600}
+.composer .btn{border-color:var(--accent); color:var(--accent-ink); background:var(--surface)}
+.filebtn{position:relative; overflow:hidden; cursor:pointer}
+.filebtn input[type=file]{position:absolute; inset:0; opacity:0; cursor:pointer; width:100%}
+.composer .mins{display:flex; align-items:center; gap:6px}
+.composer .mins input{
+  width:74px; font:inherit; font-size:13px; padding:5px 8px; color:var(--ink);
+  background:var(--surface); border:1px solid var(--accent); border-radius:6px;
+}
+.composer .chip{
+  display:inline-flex; align-items:center; gap:6px; background:var(--surface);
+  border:1px solid var(--accent); border-radius:14px; padding:3px 4px 3px 10px; font-size:12px;
+}
+.composer .chip button{border:none; background:none; cursor:pointer; color:var(--muted); font-size:15px; line-height:1; padding:0 4px}
+.composer .chip button:hover{color:var(--slot)}
+.cmsg{font-size:12px; color:var(--slot)}
+#probSend{margin-left:auto}
+
+/* ---------- the problem, as students see it ---------- */
+.problemstrip{
+  background:var(--surface); border-bottom:1px solid var(--line); padding:10px 20px 12px;
+}
+.probhead{display:flex; align-items:center; gap:10px; margin-bottom:8px}
+.plabel{
+  font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted);
+}
+.probhead .btn{margin-left:auto; padding:3px 9px; font-size:12px}
+.probimgs{display:flex; gap:12px; overflow-x:auto; padding-bottom:4px}
+.probimgs img{
+  max-height:260px; border:1px solid var(--line); border-radius:8px; background:#fff;
+  flex:none;
+}
+.problemstrip.collapsed .probimgs{display:none}
+
+.lockbar{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:9px 20px; background:var(--slot-soft); border-bottom:1px solid var(--slot);
+  color:var(--slot); font-size:13px;
+}
+.lockbar b{color:var(--slot)}
+.board.locked{opacity:.9}
+.board.locked .cursor{display:none}
+.palette.locked{opacity:.45; pointer-events:none}
+
+
+/* ---------- the problem, and the teacher's feedback ---------- */
+.problines, .worklines, .fblines{margin-top:6px}
+.problines .field, .worklines .field, .fblines .field{font-size:19px; padding:0}
+.problines .line, .worklines .line, .fblines .line{
+  grid-template-columns:22px minmax(0,1fr); gap:6px; min-height:0; padding:3px 0;
+}
+.problines .linedel, .worklines .linedel, .fblines .linedel,
+.problines .cursor, .worklines .cursor, .fblines .cursor{display:none}
+.problines .gutter, .worklines .gutter, .fblines .gutter{height:auto}
+.problines .gutter b, .worklines .gutter b, .fblines .gutter b{
+  min-width:17px; height:17px; font-size:9px; border-radius:9px;
+}
+.problines .blank, .worklines .blank, .fblines .blank{
+  color:var(--muted); font-size:12px; font-style:italic;
+}
+.problemstrip.collapsed .probbody{display:none}
+
+.workpanel{
+  background:var(--surface-2); border-bottom:1px solid var(--line); padding:10px 20px 12px;
+}
+.fbpanel{
+  margin:0 20px 18px; padding:11px 14px 13px;
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:10px;
+}
+.fbpanel .plabel{color:var(--accent-ink)}
+
+/* the tick a teacher puts on good work */
+.tick{
+  position:fixed; right:26px; bottom:26px; z-index:60;
+  width:74px; height:74px; border-radius:50%;
+  background:var(--accent); color:#fff; display:grid; place-items:center;
+  font-size:38px; box-shadow:0 6px 24px rgba(0,0,0,.25);
+  animation:pop .45s cubic-bezier(.2,1.4,.5,1);
+}
+@keyframes pop{from{transform:scale(.3); opacity:0} to{transform:scale(1); opacity:1}}
+@media (prefers-reduced-motion:reduce){ .tick{animation:none} }
+.tile .ticked{
+  margin-left:6px; color:var(--accent); font-weight:700; font-size:13px;
+}
+.btn.checked{background:var(--accent); border-color:var(--accent); color:var(--surface)}
+
+.conn{
+  font-size:10px; text-transform:uppercase; letter-spacing:.09em;
+  padding:2px 8px; border-radius:10px; margin-left:8px; align-self:center;
+  border:1px solid var(--line); color:var(--muted); background:var(--surface-2);
+}
+.conn.online{border-color:var(--accent); color:var(--accent-ink); background:var(--accent-soft)}
+.conn.offline, .conn.failed{border-color:var(--slot); color:var(--slot); background:var(--slot-soft)}
+
+/* ---------- countdown ---------- */
+.clock{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:13px;
+  font-variant-numeric:tabular-nums; padding:3px 10px; border-radius:12px;
+  border:1px solid var(--accent); color:var(--accent-ink); background:var(--accent-soft);
+}
+.clock.low{border-color:var(--slot); color:var(--slot); background:var(--slot-soft)}
+.clock.done{border-color:var(--slot); color:var(--surface); background:var(--slot); font-weight:600}
+
+#hidden{position:fixed; left:-9999px; top:0; width:1px; height:1px; opacity:0}
+.note{font-size:12px; color:var(--muted); margin:10px 20px 20px; max-width:70ch}
+</style>
+</head>
+<body>
+<div class="screen" id="viewLanding">
+  <div class="join">
+    <h1>Chalkline</h1>
+    <p class="joinsub">Typing math made easy</p>
+
+    <label class="fld"><span>Class code</span>
+      <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
+    <label class="fld"><span>Your name</span>
+      <input id="nameInput" placeholder="e.g. Priya" spellcheck="false" autocomplete="off"></label>
+
+    <div class="joinbtns">
+      <button class="btn big" id="joinStudent">Join as a student</button>
+      <button class="btn big on" id="joinTeacher">Open the teacher view</button>
+    </div>
+    <p class="joinnote">
+      Everyone using the same class code shares a board set. Open the teacher view in
+      one window and a student in another to try it.
+    </p>
+  </div>
+</div>
+
+<div class="screen" id="viewTeacher" hidden>
+  <div class="topbar">
+    <div class="brand">
+      <h1>Chalkline</h1>
+      <span class="tag" id="tRoom"></span>
+      <span class="conn" id="connChipT" hidden></span>
+    </div>
+    <div class="barbtns">
+      <button class="btn" id="tTheme">Theme</button>
+      <span class="clock" id="tClock" hidden></span>
+      <button class="btn" id="tPush">Push a problem</button>
+      <button class="btn" id="tClose">Close the board</button>
+      <button class="btn" id="tLeave">Leave</button>
+    </div>
+  </div>
+  <div class="gridwrap">
+    <div class="joinlink">
+      <span class="plabel">Student link</span>
+      <input id="tLink" readonly>
+      <button class="btn" id="tCopy">Copy</button>
+      <span class="hintline">Anyone opening this link can only join as a student.</span>
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <p class="empty" id="tEmpty">No student has joined <b id="tEmptyRoom"></b> yet.
+      Open this file in another window, enter the same class code and join as a student.</p>
+  </div>
+</div>
+
+<div class="screen" id="viewBoard" hidden>
+<div class="topbar">
+  <div class="brand">
+    <h1>Chalkline</h1>
+    <span class="tag">Typing math made easy</span>
+    <span class="conn" id="connChipS" hidden></span>
+  </div>
+  <div class="barbtns">
+    <button class="btn" id="themeBtn">Theme</button>
+    <button class="btn" id="addNote">Add text line</button>
+    <button class="btn" id="clearAll">Clear board</button>
+    <button class="btn" id="importBtn">Paste LaTeX</button>
+    <button class="btn" id="leaveBtn" hidden>Leave</button>
+  </div>
+</div>
+<div class="lockbar" id="lockBar" hidden>
+  <b>Time is up.</b>
+  <span>Your work stays on screen — your teacher can still see it. Nothing more can be added.</span>
+</div>
+
+<div class="composer" id="composerBar" hidden>
+  <span class="clabel">New problem</span>
+  <label class="btn filebtn">Attach PNG or PDF
+    <input type="file" id="probFile" accept="image/*,application/pdf"></label>
+  <span class="chip" id="probChip" hidden><span id="probChipName"></span>
+    <button type="button" id="probChipX" title="Remove">&times;</button></span>
+  <label class="mins">Minutes
+    <input type="number" id="probMins" min="1" max="120" placeholder="none"></label>
+  <span class="cmsg" id="probMsg"></span>
+  <button class="btn" id="probCancel">Cancel</button>
+  <button class="btn on" id="probSend">Send to the class</button>
+</div>
+
+<div class="actingbar" id="actingBar" hidden>
+  <span>Feedback for <b id="actingName"></b> &mdash; they see it live, below their own work.</span>
+  <button class="btn" id="actingCheck">&#10003; Mark correct</button>
+  <button class="btn" id="actingBack">Back to the class</button>
+</div>
+
+<div class="wrap">
+  <div class="stage">
+    <div class="problemstrip" id="probStrip" hidden>
+    <div class="probhead">
+      <span class="plabel">The problem</span>
+      <span class="clock" id="probClock" hidden></span>
+      <button class="btn" id="probToggle">Hide</button>
+    </div>
+    <div class="probbody" id="probBody">
+      <div class="probimgs" id="probImgs"></div>
+      <div class="problines" id="probLines"></div>
+    </div>
+  </div>
+
+  <div class="workpanel" id="workPanel" hidden>
+    <span class="plabel">What <b id="workWho"></b> has written</span>
+    <div class="worklines" id="workLines"></div>
+  </div>
+  <div class="boardwrap"><div class="board" id="board"></div></div>
+
+  <div class="fbpanel" id="fbPanel" hidden>
+    <div class="fbhead"><span class="plabel">From your teacher</span></div>
+    <div class="fblines" id="fbLines"></div>
+  </div>
+  <div class="tick" id="tickBadge" hidden><span>&#10003;</span></div>
+    <div class="inspector">
+      <div class="insp-l">
+        <span class="lbl">LaTeX for the focused line &mdash; what gets stored &amp; synced<span class="mode" id="modeChip">math</span></span>
+        <div class="tex" id="texOut"></div>
+        <div class="hint" id="texWarn"></div>
+      </div>
+      <div class="keys">
+        <span class="lbl">Typing shortcuts</span>
+        <div><kbd>$</kbd><span>switch between words and maths, mid&#8209;line</span></div>
+        <div><kbd>/</kbd><span>inserts a fraction</span></div>
+        <div><kbd>^</kbd><span>exponent</span></div>
+        <div><kbd>_</kbd><span>subscript</span></div>
+        <div><kbd>&larr;&nbsp;&rarr;</kbd><span>move left and right through your work</span></div>
+        <div><kbd>space</kbd><span>executes the LaTeX you just typed</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="palette" id="palette"></div>
+</div>
+
+<div class="modal" id="importPanel" hidden>
+  <div class="sheet">
+    <span class="lbl">Paste LaTeX &mdash; one expression per line</span>
+    <textarea id="importText" spellcheck="false"
+      placeholder="\int_{0}^{\pi} \sin x \, dx&#10;\frac{d}{dx}\left(x^{3}-2x\right)&#10;\lim_{x \to 0}\frac{\sin x}{x}"></textarea>
+    <div class="warn" id="importWarn"></div>
+    <div class="sheetbtns">
+      <button class="btn" id="importCancel">Cancel</button>
+      <button class="btn on" id="importGo">Add to board</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /viewBoard -->
+
+<textarea id="hidden" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+
+<script>
+"use strict";
+
+/* Declared up here because render() publishes, and render() runs long before
+   the sharing section below is reached. */
+let sync = null, role = null, myRoom = "", myName = "", myId = "";
+let editorTarget = {mode:"idle"};
+let pubTimer = null, heartbeat = null, agoTimer = null;
+/* =========================================================================
+   1. MODEL
+   A math expression is a LIST of NODES. A node with sub-expressions holds
+   them in node.s = [list, list, ...]  (slots, in navigation order).
+   ========================================================================= */
+
+const LETTERS = /^[A-Za-z]$/, DIGITS = /^[0-9.]$/;
+const RELS = {"=":"=", "<":"<", ">":">"};
+const OPS  = {"+":"+", "-":"−"};
+
+function L(){ return []; }                       // new empty slot
+function ch(v){ return {t:"c", v}; }
+/* A run of words is stored as individual character nodes, exactly like maths.
+   That way every cursor rule, backspace rule and click already works on it;
+   only serialization has to know to gather a run back into one \text{…}. */
+function tc(v){ return {t:"tc", v}; }
+function op(v,tex){ return {t:"op", v, tex:tex||v}; }
+function rel(v,tex){ return {t:"rel", v, tex:tex||v}; }
+function sym(v,tex){ return {t:"sym", v, tex}; }
+function fn(v){ return {t:"fn", v}; }
+function frac(){ return {t:"frac", s:[L(),L()]}; }
+function sup(){ return {t:"sup", s:[L()]}; }
+function sub(){ return {t:"sub", s:[L()]}; }
+function sqrt(){ return {t:"sqrt", s:[L()]}; }
+function root(){ return {t:"root", s:[L(),L()]}; }
+function delim(l,r){ return {t:"delim", l, r, s:[L()]}; }
+function mat(rows,cols,l,r){
+  const n={t:"mat", rows, cols, l, r, s:[]};
+  for(let i=0;i<rows*cols;i++) n.s.push(L());
+  return n;
+}
+function cases(rows, cols){
+  cols = cols || 1;
+  const n={t:"cases", rows, cols, s:[]};
+  for(let i=0;i<rows*cols;i++) n.s.push(L());
+  return n;
+}
+/* Big operators. style "stack" puts the bounds above and below (∑, ∏);
+   style "side" puts them beside the symbol (∫), which is the usual
+   convention for integrals. Both hold [lower, upper]; an empty slot is
+   simply not written out, so an indefinite integral is just \int. */
+function bigop(v,tex,style){ return {t:"bigop", v, tex, style:style||"stack", s:[L(),L()]}; }
+function limop(){ return {t:"limop", s:[L()]}; }
+/* A slot on its own: the dotted box a student types into, with no notation
+   wrapped around it. Written as an empty LaTeX group, which is transparent
+   once it has been filled in. */
+function blank(){ return {t:"blank", s:[L()]}; }
+/* explicit LaTeX spacing: \, \: \; \quad \qquad */
+function spc(w, tex){ return {t:"spc", w, tex}; }
+const SPC_W = {",":".17em", ":":".22em", ";":".28em", quad:"1em", qquad:"2em"};
+
+/* parent links, rebuilt after every structural change */
+function link(list, parentNode, slotIndex){
+  list.p = parentNode || null;
+  list.si = slotIndex === undefined ? -1 : slotIndex;
+  for(const n of list){
+    n.pl = list;
+    if(n.s) n.s.forEach((sl,i)=>link(sl, n, i));
+  }
+}
+
+/* =========================================================================
+   2. LaTeX
+   ========================================================================= */
+function texList(list){
+  let out = "";
+  for(let i=0;i<list.length;i++){
+    if(list[i].t === "tc"){
+      let run = "";
+      while(i < list.length && list[i].t === "tc"){ run += list[i].v; i++; }
+      i--;
+      out += "\\text{" + run.replace(/([\\{}])/g, "\\$1") + "}";
+      continue;
+    }
+    const t = texNode(list[i]);
+    // A control word runs on into a following letter: "\sin x" and
+    // "\partial x" need the space, "\sin^{2}" and "\pi+1" do not.
+    if(/\\[A-Za-z]+$/.test(out) && /^[A-Za-z]/.test(t)) out += " ";
+    out += t;
+  }
+  return out;
+}
+function grp(list){
+  const t = texList(list);
+  return "{" + t + "}";
+}
+function texNode(n){
+  switch(n.t){
+    case "c":   return n.v;
+    case "op":  return n.tex;
+    case "rel": return n.tex;
+    case "sym": return n.tex;
+    case "fn":  return "\\" + n.v;
+    case "blank": return n.s[0].length ? texList(n.s[0]) : "{}";
+    case "spc": return n.tex;
+    case "frac":return "\\frac" + grp(n.s[0]) + grp(n.s[1]);
+    case "sup": return "^" + grp(n.s[0]);
+    case "sub": return "_" + grp(n.s[0]);
+    case "sqrt":return "\\sqrt" + grp(n.s[0]);
+    case "root":return "\\sqrt[" + texList(n.s[0]) + "]" + grp(n.s[1]);
+    case "delim":{
+      const l = n.l === "{" ? "\\{" : (n.l === "." ? "." : n.l);
+      const r = n.r === "}" ? "\\}" : (n.r === "." ? "." : n.r);
+      return "\\left" + l + texList(n.s[0]) + "\\right" + r;
+    }
+    case "mat":{
+      const env = n.l === "[" ? "bmatrix" : n.l === "(" ? "pmatrix" : "vmatrix";
+      let body = [];
+      for(let r=0;r<n.rows;r++){
+        let cells=[];
+        for(let c=0;c<n.cols;c++) cells.push(texList(n.s[r*n.cols+c]));
+        body.push(cells.join(" & "));
+      }
+      return "\\begin{"+env+"}" + body.join(" \\\\ ") + "\\end{"+env+"}";
+    }
+    case "cases":{
+      let body=[];
+      for(let r=0;r<n.rows;r++){
+        let cells=[];
+        for(let c=0;c<n.cols;c++) cells.push(texList(n.s[r*n.cols+c]));
+        body.push(cells.join(" & "));
+      }
+      return "\\begin{cases}" + body.join(" \\\\ ") + "\\end{cases}";
+    }
+    case "bigop":{
+      let s = n.tex;
+      if(n.s[0].length || n.wantBounds) s += "_" + grp(n.s[0]);
+      if(n.s[1].length || n.wantBounds) s += "^" + grp(n.s[1]);
+      return s;
+    }
+    case "limop":
+      return "\\lim" + ((n.s[0].length || n.wantBounds) ? "_" + grp(n.s[0]) : "");
+  }
+  return "";
+}
+
+/* =========================================================================
+   3. BOARD STATE
+   ========================================================================= */
+let lines = [];            // {id, kind:'math'|'note', root:[] | text:''}
+let focusLine = 0;
+let cur = null;            // {list, i}
+let sel = null;            // {list, a, b}  (indices, a<=b) same-list only
+let uid = 1;
+
+function newMathLine(){ const l={id:uid++, kind:"math", root:L()}; link(l.root,null); return l; }
+function newNoteLine(){ return {id:uid++, kind:"note", text:""}; }
+
+function curLine(){ return lines[focusLine]; }
+
+function resetBoard(){
+  lines = [newMathLine()];
+  focusLine = 0;
+  cur = {list:lines[0].root, i:0};
+  sel = null;
+  pending = null;
+  textMode = false;
+}
+
+/* =========================================================================
+   4. RENDER
+   ========================================================================= */
+const boardEl = document.getElementById("board");
+const hidden  = document.getElementById("hidden");
+const texOut  = document.getElementById("texOut");
+
+function inSel(list,k){ return sel && sel.list === list && k >= sel.a && k < sel.b; }
+
+function cursorEl(){ const s=document.createElement("span"); s.className="cursor" + (textMode ? " words" : ""); return s; }
+
+/* the raw LaTeX the student is part-way through typing, shown where it will land */
+function caretAt(el){
+  if(pending !== null){
+    const p = document.createElement("span");
+    p.className = "pending";
+    p.textContent = pending;
+    el.appendChild(p);
+  }
+  el.appendChild(cursorEl());
+}
+
+/* is the cursor somewhere inside this node? */
+function cursorInside(node){
+  let l = cur && cur.list;
+  while(l){
+    if(l.p === node) return true;
+    l = l.p ? l.p.pl : null;
+  }
+  return false;
+}
+
+function renderList(list, isFocusedField, ghost){
+  const el = document.createElement("span");
+  el.className = "ml";
+  el.__slot = list;
+  if(list.length === 0){
+    const rootLine = list.p === null;
+    const here = isFocusedField && cur && cur.list === list && !sel;
+    // On an empty line there is no visible box, so the caret stands alone.
+    // Everywhere else it belongs INSIDE the dotted box — a caret sitting
+    // beside the box leaves it ambiguous which box you are about to fill.
+    if(rootLine && here) caretAt(el);
+    const ph = document.createElement("span");
+    ph.className = "ph" + (here && !rootLine ? " active" : "");
+    ph.__pos = {list, i:0};
+    // an absent integral limit is not a box waiting to be filled, and the
+    // root list of a line just needs the click target
+    if(rootLine || ghost) ph.style.visibility = "hidden";
+    if(here && !rootLine) caretAt(ph);
+    el.appendChild(ph);
+    return el;
+  }
+  for(let k=0;k<=list.length;k++){
+    if(isFocusedField && cur && cur.list === list && cur.i === k && !sel) caretAt(el);
+    if(k < list.length){
+      const node = list[k];
+      const ne = renderNode(node, isFocusedField);
+      // a leading "−" is a sign, not a binary operator: no space in front of it
+      if(node.t === "op"){
+        const before = k > 0 ? list[k-1] : null;
+        if(!before || before.t === "op" || before.t === "rel") ne.classList.add("unary");
+      }
+      ne.__pos = {list, i:k};
+      if(inSel(list,k)) ne.classList.add("sel");
+      el.appendChild(ne);
+    }
+  }
+  return el;
+}
+
+function slotEl(list, cls, f, ghost){
+  const s = renderList(list, f, ghost);
+  if(cls) s.classList.add(cls);
+  return s;
+}
+
+function renderNode(n, f){
+  const e = document.createElement("span");
+  switch(n.t){
+    case "c":
+      e.className = LETTERS.test(n.v) ? "at" : "dg";
+      e.textContent = n.v;
+      break;
+    case "tc": e.className="tx"; e.textContent=n.v; break;
+    case "op": e.className="op";  e.textContent=n.v; break;
+    case "spc": e.className="spc"; e.style.width = n.w; break;
+    case "rel":e.className="rel"; e.textContent=n.v; break;
+    case "sym":
+      e.className = /[,;]/.test(n.v) ? "punct" : "sym";
+      e.textContent = n.v;
+      break;
+    case "fn": e.className="fn"; e.textContent=n.v; break;
+    case "frac":{
+      e.className="frac";
+      const num=document.createElement("span"); num.className="num"; num.appendChild(slotEl(n.s[0],null,f));
+      const bar=document.createElement("span"); bar.className="bar";
+      const den=document.createElement("span"); den.className="den"; den.appendChild(slotEl(n.s[1],null,f));
+      e.append(num,bar,den);
+      break;
+    }
+    case "blank": e.className="blank"; e.appendChild(slotEl(n.s[0],null,f)); break;
+    case "sup": e.className="sup"; e.appendChild(slotEl(n.s[0],null,f)); break;
+    case "sub": e.className="sub"; e.appendChild(slotEl(n.s[0],null,f)); break;
+    case "sqrt":{
+      e.className="sqrt";
+      e.appendChild(radSvg());
+      const b=document.createElement("span"); b.className="rbody"; b.appendChild(slotEl(n.s[0],null,f));
+      e.appendChild(b);
+      break;
+    }
+    case "root":{
+      e.className="root";
+      const idx=document.createElement("span"); idx.className="idx"; idx.appendChild(slotEl(n.s[0],null,f));
+      const sq=document.createElement("span"); sq.className="sqrt";
+      sq.appendChild(radSvg());
+      const b=document.createElement("span"); b.className="rbody"; b.appendChild(slotEl(n.s[1],null,f));
+      sq.appendChild(b);
+      e.append(idx,sq);
+      break;
+    }
+    case "delim":{
+      e.className="delim";
+      const dl=document.createElement("span"); dl.className="dl"; dl.textContent = n.l==="." ? "" : n.l;
+      const db=document.createElement("span"); db.className="dbody"; db.appendChild(slotEl(n.s[0],null,f));
+      const dr=document.createElement("span"); dr.className="dr"; dr.textContent = n.r==="." ? "" : n.r;
+      e.append(dl,db,dr);
+      break;
+    }
+    case "mat":
+    case "cases":{
+      e.className = n.t === "cases" ? "mat cases" : "mat";
+      const dl=document.createElement("span"); dl.className="dl";
+      dl.textContent = n.t==="cases" ? "{" : n.l;
+      const g=document.createElement("span"); g.className="matgrid";
+      g.style.gridTemplateColumns = "repeat("+n.cols+", auto)";
+      for(let i=0;i<n.s.length;i++) g.appendChild(slotEl(n.s[i],null,f));
+      e.append(dl,g);
+      if(n.t !== "cases"){
+        const dr=document.createElement("span"); dr.className="dr"; dr.textContent=n.r;
+        e.appendChild(dr);
+      }
+      break;
+    }
+    case "bigop":{
+      const side = n.style === "side";
+      e.className = "bigop " + (side ? "side" : "stack");
+      let sy;
+      if(n.v === "\u222B"){
+        sy = intSvg();
+      } else {
+        sy = document.createElement("span");
+        sy.className = "bsym" + (side ? " tall" : "");
+        sy.textContent = n.v;
+      }
+      // no bounds and not being edited => an indefinite integral, so show
+      // nothing rather than two empty boxes demanding to be filled
+      const gh = !(n.s[0].length || n.s[1].length || n.wantBounds || cursorInside(n));
+      const up=document.createElement("span"); up.className="blim up"; up.appendChild(slotEl(n.s[1],null,f,gh));
+      const dn=document.createElement("span"); dn.className="blim lo"; dn.appendChild(slotEl(n.s[0],null,f,gh));
+      if(gh){
+        e.append(sy);              // no bounds at all: the block would only add a gap
+      } else if(side){
+        const lims=document.createElement("span"); lims.className="blims";
+        lims.append(up,dn);
+        e.append(sy,lims);
+      } else {
+        e.append(up,sy,dn);
+      }
+      break;
+    }
+    case "limop":{
+      e.className="bigop stack limop";
+      const sy=document.createElement("span"); sy.className="bsym lim"; sy.textContent="lim";
+      const dn=document.createElement("span"); dn.className="blim"; dn.appendChild(slotEl(n.s[0],null,f));
+      e.append(sy,dn);
+      break;
+    }
+  }
+  return e;
+}
+
+/* The integral is drawn, not set as a character. The webfont may or may not
+   have loaded, its ∫ may have ink outside the em box, and the row clips
+   vertically — an SVG has an exact box, so what is measured is what is drawn. */
+function intSvg(){
+  const ns="http://www.w3.org/2000/svg";
+  const svg=document.createElementNS(ns,"svg");
+  svg.setAttribute("viewBox","0 0 36 100");
+  svg.setAttribute("preserveAspectRatio","xMidYMid meet");
+  svg.setAttribute("class","intsvg");
+  const p=document.createElementNS(ns,"path");
+  p.setAttribute("d",
+    "M 8.0,95.0 C 4.6,95.0 3.0,91.6 5.4,89.0 C 7.4,86.8 10.2,86.2 11.3,81.8 " +
+    "C 13.2,74 14.0,61 15.5,49 C 17.0,37 18.2,24 20.8,16 " +
+    "C 22.6,10.4 25.2,6.0 28.8,6.0 C 32.2,6.0 33.8,9.4 31.4,12.0 " +
+    "C 29.4,14.2 26.6,14.8 25.5,19.2 C 23.6,27 22.8,40 21.3,52 " +
+    "C 19.8,64 18.6,77 16.0,85 C 14.2,90.6 11.6,95.0 8.0,95.0 Z");
+  p.setAttribute("fill","currentColor");
+  svg.appendChild(p);
+  return svg;
+}
+
+function radSvg(){
+  const ns="http://www.w3.org/2000/svg";
+  const svg=document.createElementNS(ns,"svg");
+  svg.setAttribute("viewBox","0 0 10 20");
+  svg.setAttribute("preserveAspectRatio","none");
+  const p=document.createElementNS(ns,"path");
+  p.setAttribute("d","M0.4,12.4 L2.9,10.8 L5.4,19.2 L9.7,0.9");
+  p.setAttribute("fill","none");
+  p.setAttribute("stroke","currentColor");
+  p.setAttribute("stroke-width","1.2");
+  p.setAttribute("stroke-linejoin","miter");
+  p.setAttribute("vector-effect","non-scaling-stroke");
+  svg.appendChild(p);
+  return svg;
+}
+
+function render(){
+  boardEl.textContent = "";
+  lines.forEach((ln, idx) => {
+    const row = document.createElement("div");
+    row.className = "line" + (idx === focusLine ? " focus" : "");
+    row.__lineIndex = idx;
+
+    const g = document.createElement("div");
+    g.className = "gutter";
+    const b = document.createElement("b");
+    b.textContent = idx + 1;
+    g.appendChild(b);
+
+    const body = document.createElement("div");
+    body.className = "linebody";
+
+    if(ln.kind === "math"){
+      const f = document.createElement("span");
+      f.className = "field";
+      f.__field = idx;
+      f.appendChild(renderList(ln.root, idx === focusLine));
+      body.appendChild(f);
+    } else {
+      const inp = document.createElement("input");
+      inp.className = "noteinput";
+      inp.value = ln.text;
+      inp.placeholder = "note…";
+      inp.addEventListener("input", e => { ln.text = e.target.value; });
+      inp.addEventListener("focus", () => { focusLine = idx; paintFocus(); updateTex(); });
+      inp.addEventListener("keydown", e => {
+        if(e.key === "Enter"){ e.preventDefault(); insertLineAfter(idx, newMathLine()); }
+        if(e.key === "Backspace" && ln.text === "" && lines.length > 1){
+          e.preventDefault(); removeLine(idx);
+        }
+      });
+      body.appendChild(inp);
+    }
+
+    const del = document.createElement("button");
+    del.className = "linedel";
+    del.title = "Delete line";
+    del.textContent = "×";
+    del.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); removeLine(idx); });
+
+    row.append(g, body, del);
+    boardEl.appendChild(row);
+  });
+  fitDelims();
+  updateTex();
+  schedulePublish();
+}
+
+function paintFocus(){
+  [...boardEl.children].forEach((r,i)=> r.classList.toggle("focus", i===focusLine));
+}
+
+/* stretch ( ) [ ] | { } to the height of their contents */
+function fitDelims(root){
+  (root || boardEl).querySelectorAll(".delim, .mat").forEach(d => {
+    const body = d.querySelector(":scope > .dbody, :scope > .matgrid");
+    if(!body) return;
+    const fs = parseFloat(getComputedStyle(d).fontSize) || 27;
+    const base = fs * 1.16;
+    const h = body.offsetHeight;
+    const k = Math.max(1, h / base);
+    d.querySelectorAll(":scope > .dl, :scope > .dr").forEach(x => {
+      x.style.transform = k > 1.02 ? ("scaleY(" + k.toFixed(3) + ")") : "";
+      x.style.marginLeft = x.className === "dr" ? ".02em" : "";
+    });
+  });
+}
+
+let warnTimer = null;
+function showWarn(msgs){
+  const el = document.getElementById("texWarn");
+  if(!el) return;
+  el.textContent = [...new Set(msgs)].join(" · ");
+  clearTimeout(warnTimer);
+  warnTimer = setTimeout(() => { el.textContent = ""; }, 5000);
+}
+
+function updateTex(){
+  const chip = document.getElementById("modeChip");
+  if(chip){
+    chip.textContent = textMode ? "words" : "math";
+    chip.classList.toggle("words", textMode);
+  }
+  const ln = curLine();
+  if(!ln) { texOut.textContent=""; return; }
+  texOut.textContent = ln.kind === "math" ? (texList(ln.root) || "—") : ("% " + ln.text);
+}
+
+/* =========================================================================
+   5. NAVIGATION
+   ========================================================================= */
+function slotsOf(n){ return n.s || null; }
+
+function enterFirst(n){ return {list:n.s[0], i:0}; }
+function enterLast(n){ const sl=n.s[n.s.length-1]; return {list:sl, i:sl.length}; }
+
+function moveRight(){
+  const {list,i} = cur;
+  if(i < list.length){
+    const n = list[i];
+    if(n.s && n.s.length){ cur = enterFirst(n); return true; }
+    cur = {list, i:i+1}; return true;
+  }
+  return exitRight(list);
+}
+function exitRight(list){
+  const n = list.p;
+  if(!n) return false;
+  if(list.si + 1 < n.s.length){ cur = {list:n.s[list.si+1], i:0}; return true; }
+  const outer = n.pl;
+  cur = {list:outer, i:outer.indexOf(n)+1};
+  return true;
+}
+function moveLeft(){
+  const {list,i} = cur;
+  if(i > 0){
+    const n = list[i-1];
+    if(n.s && n.s.length){ cur = enterLast(n); return true; }
+    cur = {list, i:i-1}; return true;
+  }
+  return exitLeft(list);
+}
+function exitLeft(list){
+  const n = list.p;
+  if(!n) return false;
+  if(list.si - 1 >= 0){ const sl=n.s[list.si-1]; cur = {list:sl, i:sl.length}; return true; }
+  const outer = n.pl;
+  cur = {list:outer, i:outer.indexOf(n)};
+  return true;
+}
+
+/* up / down inside stacked structures; otherwise move between lines */
+function moveVert(dir){          // dir = -1 up, +1 down
+  let list = cur.list;
+  while(list && list.p){
+    const n = list.p, k = list.si;
+    if(n.t === "frac" || n.t === "bigop" || n.t === "supsub"){
+      const target = k + dir;
+      if(target >= 0 && target < n.s.length){ cur = {list:n.s[target], i:n.s[target].length}; return true; }
+    } else if(n.t === "mat" || n.t === "cases"){
+      const r = Math.floor(k / n.cols), c = k % n.cols, nr = r + dir;
+      if(nr >= 0 && nr < n.rows){ const sl = n.s[nr*n.cols+c]; cur = {list:sl, i:sl.length}; return true; }
+    } else if(n.t === "sup" && dir === 1){
+      const outer = n.pl; cur = {list:outer, i:outer.indexOf(n)+1}; return true;
+    } else if(n.t === "sub" && dir === -1){
+      const outer = n.pl; cur = {list:outer, i:outer.indexOf(n)+1}; return true;
+    }
+    list = n.pl;
+  }
+  return gotoLine(focusLine + dir);
+}
+
+function gotoLine(idx){
+  if(idx < 0 || idx >= lines.length) return false;
+  focusLine = idx;
+  const ln = lines[idx];
+  if(ln.kind === "math"){ cur = {list:ln.root, i:ln.root.length}; sel=null; render(); hidden.focus(); }
+  else { render(); const inp = boardEl.children[idx].querySelector("input"); if(inp) inp.focus(); }
+  return true;
+}
+
+/* Tab: next empty slot in this line, else next line */
+function tabNext(){
+  const ln = curLine();
+  if(ln.kind !== "math") return gotoLine(focusLine+1);
+  const empties = [];
+  (function walk(list){
+    for(const n of list){
+      if(n.s) n.s.forEach(sl => { if(sl.length===0) empties.push(sl); walk(sl); });
+    }
+  })(ln.root);
+  const here = cur.list;
+  const idx = empties.indexOf(here);
+  const next = empties.find((sl,i2)=> i2 > idx) || (idx === -1 ? empties[0] : null);
+  if(next){ cur = {list:next, i:0}; sel=null; render(); return true; }
+  // Nothing left to fill in: step out to just after the structure being
+  // edited — for ∫ with both bounds filled that is the integrand position,
+  // in front of the dx — and only then on to the next line.
+  if(cur.list !== ln.root){
+    const host = cur.list.p;
+    if(host && host.pl){
+      cur = {list:host.pl, i:host.pl.indexOf(host) + 1};
+      sel = null; render(); return true;
+    }
+    cur = {list:ln.root, i:ln.root.length}; sel=null; render(); return true;
+  }
+  return gotoLine(focusLine+1);
+}
+
+/* =========================================================================
+   6. EDITING
+   ========================================================================= */
+function deleteSelection(){
+  if(!sel) return false;
+  sel.list.splice(sel.a, sel.b - sel.a);
+  cur = {list:sel.list, i:sel.a};
+  sel = null;
+  relink();
+  return true;
+}
+function relink(){ lines.forEach(l => { if(l.kind==="math") link(l.root,null); }); }
+
+/* Which mode is the cursor sitting in? Put the caret inside a word and typing
+   continues the word; put it after a symbol and typing is mathematics. */
+let textMode = false;
+function syncMode(){
+  const L = cur.list, prev = cur.i > 0 ? L[cur.i-1] : null, next = L[cur.i] || null;
+  textMode = prev ? prev.t === "tc" : !!(next && next.t === "tc");
+}
+
+function insert(node){
+  if(sel) deleteSelection();
+  cur.list.splice(cur.i, 0, node);
+  cur = {list:cur.list, i:cur.i+1};
+  relink();
+}
+
+/* insert a template and drop the cursor in its first slot */
+function insertTemplate(node, capture){
+  if(sel && !capture) deleteSelection();
+  const list = cur.list;
+  let grabbed = null;
+  if(sel && capture){
+    grabbed = list.splice(sel.a, sel.b - sel.a);
+    cur = {list, i:sel.a};
+    sel = null;
+  }
+  list.splice(cur.i, 0, node);
+  if(grabbed && grabbed.length){
+    node.s[0].push(...grabbed);
+    cur = node.s.length === 1
+      ? {list:node.s[0], i:node.s[0].length}
+      : {list:node.s[node.s.length-1], i:0};
+  } else {
+    cur = {list:node.s[0], i:0};
+  }
+  relink();
+}
+
+/* what counts as "the thing before the cursor" for auto-fraction */
+function grabTerm(list, i){
+  const stops = new Set(["op","rel"]);
+  let j = i;
+  let depth = 0;
+  while(j > 0){
+    const n = list[j-1];
+    if(stops.has(n.t)) break;
+    if(n.t === "tc") break;               // "area is 1/2" — the words stay out
+    // lim, ∑ and ∫ apply TO the fraction; they are not part of its numerator
+    if(n.t === "limop" || n.t === "bigop") break;
+    if(n.t === "sym" && /[,;]/.test(n.v)) break;
+    if(n.t === "fn") { j--; break; }
+    j--;
+    depth++;
+    if(depth > 200) break;
+  }
+  return j;
+}
+
+/* Pressing "/" again while sitting in a still-empty denominator widens the
+   numerator leftward by one more operator + term. Type  -b+-sqrt(...)/  then
+   "/" twice and the whole quadratic-formula numerator is captured. */
+function widenNumerator(){
+  const den = cur.list;
+  if(!(den.p && den.p.t === "frac" && den.si === 1 && den.length === 0)) return false;
+  const f = den.p, outer = f.pl, at = outer.indexOf(f);
+  if(at <= 0) return false;
+  const prev = outer[at-1];
+  if(prev.t === "rel") return false;              // never swallow the "=" side
+  const start = (prev.t === "op") ? grabTerm(outer, at-1) : grabTerm(outer, at);
+  if(start >= at) return false;
+  const grabbed = outer.splice(start, at - start);
+  f.s[0].unshift(...grabbed);
+  relink();
+  return true;
+}
+
+function autoFraction(){
+  if(widenNumerator()) return;
+  const list = cur.list;
+  const f = frac();
+  if(sel){
+    const grabbed = list.splice(sel.a, sel.b - sel.a);
+    list.splice(sel.a, 0, f);
+    f.s[0].push(...grabbed);
+    cur = {list:f.s[1], i:0};
+    sel = null;
+    relink();
+    return;
+  }
+  const start = grabTerm(list, cur.i);
+  const grabbed = list.splice(start, cur.i - start);
+  list.splice(start, 0, f);
+  f.s[0].push(...grabbed);
+  cur = {list:f.s[1], i:0};
+  relink();
+}
+
+const WORDS = {
+  sqrt:  () => insertTemplate(sqrt()),
+  cbrt:  () => { const r = root(); r.s[0].push(ch("3")); insertTemplate(r); cur = {list:r.s[1], i:0}; relink(); },
+  nthroot:()=> insertTemplate(root()),
+  pi:    () => insert(sym("π","\\pi")),
+  theta: () => insert(sym("θ","\\theta")),
+  alpha: () => insert(sym("α","\\alpha")),
+  beta:  () => insert(sym("β","\\beta")),
+  deg:   () => insert(sym("°","^\\circ")),
+  infinity:()=> insert(sym("∞","\\infty")),
+  inf:   () => insert(sym("∞","\\infty")),
+  sum:   () => insertTemplate(bigop("∑","\\sum")),
+};
+/* two-letter words are deliberately NOT auto-converted (pm, le, ne… collide
+   with ordinary variable products like p·m). Use +-, <=, >=, != instead. */
+const FUNCS = ["arcsin","arccos","arctan","sin","cos","tan","csc","sec","cot","sinh","cosh","tanh","log","ln","det","max","min"];
+
+/* after typing a letter, see whether the trailing run makes a keyword */
+function tryWord(){
+  const list = cur.list;
+  let j = cur.i, word = "";
+  while(j > 0 && list[j-1].t === "c" && LETTERS.test(list[j-1].v)){ word = list[j-1].v + word; j--; }
+  if(!word) return false;
+  const lower = word.toLowerCase();
+
+  for(const f of FUNCS){
+    if(lower.endsWith(f)){
+      const start = cur.i - f.length;
+      list.splice(start, f.length);
+      cur = {list, i:start};
+      insert(fn(f));
+      if(f === "log"){ /* leave base to the palette / _ key */ }
+      relink(); return true;
+    }
+  }
+  for(const w in WORDS){
+    if(lower.endsWith(w)){
+      const start = cur.i - w.length;
+      list.splice(start, w.length);
+      cur = {list, i:start};
+      relink();
+      WORDS[w]();
+      return true;
+    }
+  }
+  return false;
+}
+
+const CLOSERS = {"(":")", "[":"]", "{":"}"};
+
+/* two-character combinations: <= >= != +- -> */
+function combine(k){
+  const list = cur.list, prev = cur.i > 0 ? list[cur.i-1] : null;
+  if(!prev) return false;
+  const swap = (v,tex,type) => {
+    list.splice(cur.i-1, 1, type === "op" ? op(v,tex) : rel(v,tex));
+    relink(); return true;
+  };
+  if(k === "=" && prev.t === "rel" && prev.v === "<") return swap("≤","\\le","rel");
+  if(k === "=" && prev.t === "rel" && prev.v === ">") return swap("≥","\\ge","rel");
+  if(k === "=" && prev.t === "sym" && prev.v === "!") return swap("≠","\\ne","rel");
+  if(k === "-" && prev.t === "op"  && prev.v === "+") return swap("±","\\pm","op");
+  if(k === "+" && prev.t === "op"  && prev.v === "−") return swap("∓","\\mp","op");
+  if(k === ">" && prev.t === "op"  && prev.v === "−") return swap("→","\\to","rel");
+  return false;
+}
+
+/* -------------------------------------------------------------------------
+   RAW LaTeX TYPING
+   A student who already knows LaTeX types "\" and keeps going. The characters
+   are held in `pending` and shown inline as they type, then parsed and spliced
+   in as soon as the command is complete — after its arguments if it takes any,
+   otherwise on a space or on the first character that cannot belong to it.
+   ------------------------------------------------------------------------- */
+let pending = null;
+
+const ARGC = { frac:2, dfrac:2, tfrac:2, binom:2, sqrt:1, text:1, mathrm:1, mathbb:1,
+               operatorname:1, overline:1, underline:1 };
+
+/* operators that can keep taking _ and ^ bounds after they are otherwise done */
+const BOUNDS = new Set(["int","oint","iint","sum","prod","lim"]);
+
+function pendingName(src){
+  const m = /^\\([A-Za-z]+)/.exec(src);
+  return m ? m[1] : "";
+}
+
+/* is the command still waiting for something? */
+function pendingNeedsMore(src){
+  let depth = 0, square = 0, done = 0;
+  for(const c of src){
+    if(c === "{") depth++;
+    else if(c === "}"){ depth--; if(depth === 0) done++; }
+    else if(c === "[") square++;
+    else if(c === "]") square--;
+  }
+  if(depth > 0 || square > 0) return true;              // unclosed group
+  if(done < (ARGC[pendingName(src)] || 0)) return true; // missing an argument
+  if(/[_^]$/.test(src)) return true;                    // a bound with nothing in it
+  return false;
+}
+
+/* could more characters still belong to this command? */
+function pendingCanTakeMore(src){
+  if(!/[{[_^]/.test(src)) return true;          // the name itself could be longer
+  const name = pendingName(src);
+  if(!BOUNDS.has(name)) return false;
+  if(name === "lim") return !/_/.test(src);     // lim takes one bound
+  return !(/_/.test(src) && /\^/.test(src));    // ∫ and ∑ take two
+}
+
+function firstEmptySlot(node){
+  if(!node || !node.s) return null;
+  for(const sl of node.s) if(sl.length === 0) return sl;
+  return null;
+}
+
+function commitPending(){
+  const src = pending;
+  pending = null;
+  if(!src || src === "\\") return;
+  const parsed = parseTex(src);
+  if(!parsed.list.length){
+    showWarn(parsed.warnings.length ? parsed.warnings : ["nothing to insert for " + src]);
+    return;
+  }
+  if(sel) deleteSelection();
+  const nodes = parsed.list;
+  cur.list.splice(cur.i, 0, ...nodes);
+  cur = {list:cur.list, i:cur.i + nodes.length};
+  relink();
+  // "\frac" typed on its own leaves two empty boxes — drop into the first.
+  // Big operators are left alone: after "\int" the integrand comes next, and
+  // _ and ^ fill the bounds.
+  const last = nodes[nodes.length-1];
+  if(last.t !== "bigop" && last.t !== "limop"){
+    const empty = firstEmptySlot(last);
+    if(empty) cur = {list:empty, i:0};
+  }
+  if(parsed.warnings.length) showWarn(parsed.warnings);
+}
+
+function typePending(k){
+  const body = pending.slice(1);
+
+  if(pending === "\\"){
+    // \, \: \; are real spacing; \! renders as nothing
+    if(",;:!".includes(k)){
+      pending = null;
+      if(SPC_W[k]) insert(spc(SPC_W[k], "\\" + k));
+      return;
+    }
+    // \{ and \} are literal braces
+    if(k === "{"){ pending = null; insertTemplate(delim("{","}"), true); return; }
+    // \$ is a literal dollar sign, not the mode switch
+    if(k === "$"){ pending = null; insert(textMode ? tc("$") : sym("$","\\$")); return; }
+  }
+
+  // \begin{…} … \end{…} is buffered whole
+  if(body.startsWith("begin")){
+    pending += k;
+    const nb = (pending.match(/\\begin\{/g) || []).length;
+    const ne = (pending.match(/\\end\{[^}]*\}/g) || []).length;
+    if(nb > 0 && nb === ne) commitPending();
+    return;
+  }
+
+  // \left( and \right) do exactly what typing the bare delimiter does
+  if((body === "left" || body === "right") && "()[]{}|.".includes(k)){
+    pending = null;
+    if(body === "left") typeChar(k === "." ? "(" : k);
+    else typeChar(k === "." ? ")" : (CLOSERS[k] || k));
+    return;
+  }
+
+  const take = () => {
+    pending += k;
+    if(!pendingNeedsMore(pending) && !pendingCanTakeMore(pending)) commitPending();
+  };
+
+  // still inside an argument or a bound: every character belongs to the command
+  if(pendingNeedsMore(pending)){ take(); return; }
+
+  if(k === " "){ commitPending(); return; }
+  if(k === "\\"){ commitPending(); pending = "\\"; return; }
+
+  const name = pendingName(pending);
+  const started = /[{[_^]/.test(pending);
+
+  if(/[A-Za-z]/.test(k) && !started){ take(); return; }          // longer name
+  if((k === "{" || k === "[") && (ARGC[name] || 0) > 0){ take(); return; }
+  if((k === "_" || k === "^") && BOUNDS.has(name)){ take(); return; }
+
+  commitPending();
+  typeChar(k);                       // the character that ended the command
+}
+
+function typeChar(k){
+  if(pending !== null){ typePending(k); return; }
+
+  // "$" flips between words and mathematics, mid-line, the way it does in LaTeX
+  if(k === "$" && !(textMode && cur.i > 0 && cur.list[cur.i-1].t === "tc" && cur.list[cur.i-1].v === "\\")){
+    textMode = !textMode;
+    // Starting a sentence inside a superscript is always a mistake — the
+    // student meant the line, not the exponent. Step out of any script first.
+    if(textMode){
+      while(cur.list.p && (cur.list.p.t === "sup" || cur.list.p.t === "sub")){
+        const n = cur.list.p, outer = n.pl;
+        cur = {list:outer, i:outer.indexOf(n) + 1};
+      }
+    }
+    return;
+  }
+  if(textMode){
+    // \$ escapes the mode key, so "$5.00" is still typeable inside a sentence
+    const prev = cur.i > 0 ? cur.list[cur.i-1] : null;
+    if(k === "$" && prev && prev.t === "tc" && prev.v === "\\"){
+      cur.list.splice(cur.i-1, 1, tc("$"));
+      relink();
+      return;
+    }
+    insert(tc(k));                         // in words, every key is literal
+    return;
+  }
+
+  if(k === "\\"){ pending = "\\"; return; }
+  if(k === "/"){ autoFraction(); return; }
+  if(combine(k)) return;
+  if(k === "^" || k === "_"){
+    // after ∑ ∏ ∫ lim, _ and ^ fill the bounds rather than starting a new script
+    const prev = cur.i > 0 ? cur.list[cur.i-1] : null;
+    if(prev && (prev.t === "bigop" || prev.t === "limop")){
+      const slot = prev.t === "limop" ? 0 : (k === "^" ? 1 : 0);
+      prev.wantBounds = true;
+      cur = {list:prev.s[slot], i:prev.s[slot].length};
+      return;
+    }
+    // already inside one of the bounds: "\int _a^b" means the other bound,
+    // not an exponent on the bound we are standing in
+    const host = cur.list.p;
+    if(host && host.t === "bigop"){
+      const target = host.s[k === "^" ? 1 : 0];
+      if(target.length === 0){ cur = {list:target, i:0}; return; }
+    }
+    insertTemplate(k === "^" ? sup() : sub());
+    return;
+  }
+  // Braces are LaTeX grouping, not characters: "{" needs no box because the
+  // structure already made one, and "}" means "I am done with this box".
+  // A literal brace is written \{ … \}, exactly as in LaTeX.
+  if(k === "{") return;
+  if(k === "}"){ exitRight(cur.list); return; }
+  if(k === "(" || k === "["){ insertTemplate(delim(k, CLOSERS[k]), true); return; }
+  if(k === ")" || k === "]"){
+    // step out of the enclosing delimiter if we're in one
+    let list = cur.list;
+    while(list && list.p){
+      if(list.p.t === "delim"){ const n=list.p, outer=n.pl; cur={list:outer, i:outer.indexOf(n)+1}; return; }
+      list = list.p.pl;
+    }
+    insert(sym(k, k)); return;
+  }
+  if(k === "|"){
+    let list = cur.list;
+    while(list && list.p){
+      if(list.p.t === "delim" && list.p.l === "|"){ const n=list.p, outer=n.pl; cur={list:outer, i:outer.indexOf(n)+1}; return; }
+      list = list.p.pl;
+    }
+    insertTemplate(delim("|","|"), true); return;
+  }
+  if(k === "'"){ insert(sym("′","'")); return; }
+  if(k === "*"){ insert(op("·","\\cdot")); return; }
+  if(k === "+" ){ insert(op("+","+")); return; }
+  if(k === "-" ){ insert(op("−","-")); return; }
+  if(k === "=" ){ insert(rel("=","=")); return; }
+  if(k === "<" ){ insert(rel("<","<")); return; }
+  if(k === ">" ){ insert(rel(">",">")); return; }
+  if(k === "," || k === ";"){ insert(sym(k,k)); return; }
+  // Spaces are implicit in mathematics, so a space is free to mean "done with
+  // this box" — the same thing "}" means, and what it does in LaTeX itself.
+  // At the top level of a line there is no box to leave, so it does nothing.
+  if(k === " "){ if(cur.list.p) exitRight(cur.list); return; }
+  if(LETTERS.test(k)){ insert(ch(k)); tryWord(); return; }
+  if(DIGITS.test(k)){ insert(ch(k)); return; }
+  insert(sym(k,k));
+}
+
+function backspace(){
+  if(sel){ deleteSelection(); return; }
+  const {list,i} = cur;
+  if(i > 0){
+    const n = list[i-1];
+    if(n.s && n.s.length){                        // step into the structure
+      cur = enterLast(n);
+      return;
+    }
+    list.splice(i-1,1);
+    cur = {list, i:i-1};
+    relink();
+    return;
+  }
+  // at the start of a slot
+  const n = list.p;
+  if(!n){                                          // start of the whole line
+    if(focusLine > 0){
+      const prev = lines[focusLine-1];
+      if(list.length === 0 && lines.length > 1){ removeLine(focusLine); return; }
+      if(prev.kind === "math"){ focusLine--; cur = {list:prev.root, i:prev.root.length}; }
+    }
+    return;
+  }
+  if(list.si > 0){ const sl = n.s[list.si-1]; cur = {list:sl, i:sl.length}; return; }
+  // first slot: delete the structure, keeping its contents
+  const outer = n.pl, at = outer.indexOf(n);
+  const contents = [];
+  n.s.forEach(sl => contents.push(...sl));
+  outer.splice(at, 1, ...contents);
+  cur = {list:outer, i:at};
+  relink();
+}
+
+function insertLineAfter(idx, ln){
+  lines.splice(idx+1, 0, ln);
+  focusLine = idx+1;
+  if(ln.kind === "math"){ cur = {list:ln.root, i:0}; sel=null; render(); hidden.focus(); }
+  else { render(); const inp = boardEl.children[focusLine].querySelector("input"); if(inp) inp.focus(); }
+}
+function removeLine(idx){
+  if(lines.length === 1){ resetBoard(); render(); hidden.focus(); return; }
+  lines.splice(idx,1);
+  focusLine = Math.max(0, Math.min(idx-1, lines.length-1));
+  const ln = lines[focusLine];
+  if(ln.kind === "math"){ cur = {list:ln.root, i:ln.root.length}; sel=null; render(); hidden.focus(); }
+  else render();
+}
+
+/* =========================================================================
+   7. KEYBOARD
+   ========================================================================= */
+function extendSel(dir){
+  const list = cur.list;
+  if(!sel) sel = {list, a:cur.i, b:cur.i, anchor:cur.i};
+  if(sel.list !== list) sel = {list, a:cur.i, b:cur.i, anchor:cur.i};
+  let head = (cur.i === sel.a && sel.anchor === sel.b) ? sel.a : (cur.i);
+  head = Math.max(0, Math.min(list.length, cur.i + dir));
+  cur = {list, i:head};
+  sel.a = Math.min(sel.anchor, head);
+  sel.b = Math.max(sel.anchor, head);
+  if(sel.a === sel.b) sel = null;
+}
+
+hidden.addEventListener("keydown", e => {
+  const ln = curLine();
+  if(!ln || ln.kind !== "math") return;
+  if(isLocked()){ e.preventDefault(); return; }
+  const k = e.key;
+
+  // part-way through typing a raw LaTeX command
+  if(pending !== null){
+    if(k === "Escape"){ e.preventDefault(); pending = null; render(); return; }
+    if(k === "Backspace"){
+      e.preventDefault();
+      pending = pending.length <= 1 ? null : pending.slice(0, -1);
+      render(); return;
+    }
+    if(k === "Enter"){ e.preventDefault(); commitPending(); render(); return; }
+    if(k === "Tab" || k.indexOf("Arrow") === 0 || k === "Home" || k === "End") commitPending();
+  }
+
+  if((e.metaKey || e.ctrlKey) && k.toLowerCase() === "a"){
+    e.preventDefault();
+    sel = {list:cur.list, a:0, b:cur.list.length, anchor:0};
+    cur = {list:cur.list, i:cur.list.length};
+    render(); return;
+  }
+  if(e.metaKey || e.ctrlKey) return;
+
+  if(k === "ArrowRight"){ e.preventDefault(); if(e.shiftKey) extendSel(1); else { sel=null; moveRight(); syncMode(); } render(); return; }
+  if(k === "ArrowLeft"){  e.preventDefault(); if(e.shiftKey) extendSel(-1); else { sel=null; moveLeft(); syncMode(); } render(); return; }
+  if(k === "ArrowUp"){    e.preventDefault(); sel=null; moveVert(-1); syncMode(); render(); return; }
+  if(k === "ArrowDown"){  e.preventDefault(); sel=null; moveVert(1); syncMode(); render(); return; }
+  if(k === "Home"){ e.preventDefault(); cur={list:cur.list,i:0}; sel=null; syncMode(); render(); return; }
+  if(k === "End"){  e.preventDefault(); cur={list:cur.list,i:cur.list.length}; sel=null; syncMode(); render(); return; }
+  if(k === "Tab"){  e.preventDefault(); tabNext(); syncMode(); render(); return; }
+  if(k === "Enter"){ e.preventDefault(); insertLineAfter(focusLine, newMathLine()); return; }
+  if(k === "Backspace"){ e.preventDefault(); backspace(); syncMode(); render(); return; }
+  if(k === "Delete"){
+    e.preventDefault();
+    if(sel) deleteSelection();
+    else if(cur.i < cur.list.length && !cur.list[cur.i].s){ cur.list.splice(cur.i,1); relink(); }
+    render(); return;
+  }
+  if(k.length === 1){ e.preventDefault(); typeChar(k); render(); return; }
+});
+
+/* mobile / IME fallback */
+hidden.addEventListener("input", () => {
+  const v = hidden.value;
+  if(v){ for(const c of v) typeChar(c); hidden.value=""; render(); }
+});
+
+/* =========================================================================
+   8. MOUSE
+   ========================================================================= */
+boardEl.addEventListener("mousedown", e => {
+  if(isLocked()){ e.preventDefault(); return; }
+  const row = e.target.closest ? e.target.closest(".line") : null;
+  if(!row){
+    // clicked the board but not a line — take the keyboard back anyway
+    e.preventDefault();
+    if(pending !== null) commitPending();
+    focusLine = lines.length - 1;
+    const last = lines[focusLine];
+    cur = {list:last.root, i:last.root.length};
+    sel = null; syncMode(); render(); hidden.focus();
+    return;
+  }
+  const idx = row.__lineIndex;
+  const ln = lines[idx];
+  if(pending !== null) commitPending();
+  if(ln.kind !== "math") return;
+  e.preventDefault();
+  focusLine = idx;
+  sel = null;
+
+  let el = e.target, pos = null, slot = null;
+  while(el && el !== row){
+    if(el.__pos){ pos = el.__pos; break; }
+    if(el.__slot && !slot) slot = el.__slot;
+    el = el.parentNode;
+  }
+  if(pos){
+    const r = (e.target.__pos ? e.target : el).getBoundingClientRect();
+    cur = {list:pos.list, i: e.clientX > r.left + r.width/2 ? pos.i+1 : pos.i};
+  } else if(slot){
+    cur = {list:slot, i:slot.length};
+  } else {
+    cur = {list:ln.root, i:ln.root.length};
+  }
+  syncMode();
+  render();
+  hidden.focus();
+});
+
+/* =========================================================================
+   9. PALETTE
+   ========================================================================= */
+/* helpers for pre-filled templates */
+function fracOf(numNodes, denNodes){
+  const f = frac();
+  f.s[0].push(...numNodes);
+  f.s[1].push(...denNodes);
+  return f;
+}
+function supOf(v){ const s = sup(); s.s[0].push(ch(v)); return s; }
+/* an empty pair of brackets, i.e. a slot the student still has to fill */
+function openParen(){ return delim("(",")"); }
+function invTrig(name){
+  insert(fn(name));
+  insertTemplate(sup());
+  insert(op("−","-"));
+  insert(ch("1"));
+  exitRight(cur.list);
+}
+/* insert several nodes at once, leaving the cursor at a chosen offset */
+function insertSeq(nodes, offset){
+  if(sel) deleteSelection();
+  cur.list.splice(cur.i, 0, ...nodes);
+  cur = {list:cur.list, i:cur.i + offset};
+  relink();
+}
+
+const PALETTE = [
+  ["Templates", 4, [
+    {id:"frac", face:"\\frac{a}{b}", tex:"\\frac{a}{b}",
+     act:() => insertTemplate(frac(), true)},
+    {id:"sqrt", face:"\\sqrt{x}", tex:"\\sqrt{x}",
+     act:() => insertTemplate(sqrt(), true)},
+    {id:"root", face:"\\sqrt[n]{x}", tex:"\\sqrt[n]{x}",
+     act:() => insertTemplate(root())},
+    {id:"abs",  face:"\\left|x\\right|", tex:"\\left| x \\right|",
+     act:() => insertTemplate(delim("|","|"), true)},
+  ]],
+  ["Operators & symbols", 4, [
+    {id:"le",     face:"\\le",        tex:"\\le",        act:() => insert(rel("≤","\\le"))},
+    {id:"ge",     face:"\\ge",        tex:"\\ge",        act:() => insert(rel("≥","\\ge"))},
+    {id:"ne",     face:"\\ne",        tex:"\\ne",        act:() => insert(rel("≠","\\ne"))},
+    {id:"approx", face:"\\approx",    tex:"\\approx",    act:() => insert(rel("≈","\\approx"))},
+    {id:"pi",     face:"\\pi",        tex:"\\pi",        act:() => insert(sym("π","\\pi"))},
+    {id:"theta",  face:"\\theta",     tex:"\\theta",     act:() => insert(sym("θ","\\theta"))},
+    {id:"deg",    face:"^\\circ",     tex:"^\\circ",     act:() => insert(sym("°","^\\circ"))},
+    {id:"angle",  face:"\\angle",     tex:"\\angle",     act:() => insert(sym("∠","\\angle"))},
+    {id:"cdot",   face:"\\cdot",      tex:"\\cdot",      act:() => insert(op("·","\\cdot"))},
+    {id:"pm",     face:"\\pm",        tex:"\\pm",        act:() => insert(op("±","\\pm"))},
+    {id:"cup",    face:"\\cup",       tex:"\\cup",       act:() => insert(op("∪","\\cup"))},
+    {id:"implies",face:"\\Rightarrow",tex:"\\Rightarrow",act:() => insert(rel("⇒","\\Rightarrow"))},
+    {id:"in",     face:"\\in",        tex:"\\in",        act:() => insert(rel("∈","\\in"))},
+    {id:"notin",  face:"\\notin",     tex:"\\notin",     act:() => insert(rel("∉","\\notin"))},
+    {id:"inf",    face:"\\infty",     tex:"\\infty",     act:() => insert(sym("∞","\\infty"))},
+    {id:"neginf", face:"-\\infty",    tex:"-\\infty",
+     act:() => { insert(op("−","-")); insert(sym("∞","\\infty")); }},
+  ]],
+  ["Number sets", 4, [
+    {id:"naturals",  face:"\\mathbb{N}", tex:"\\mathbb{N}", sub:"naturals",
+     act:() => insert(sym("ℕ","\\mathbb{N}"))},
+    {id:"integers",  face:"\\mathbb{Z}", tex:"\\mathbb{Z}", sub:"integers",
+     act:() => insert(sym("ℤ","\\mathbb{Z}"))},
+    {id:"rationals", face:"\\mathbb{Q}", tex:"\\mathbb{Q}", sub:"rationals",
+     act:() => insert(sym("ℚ","\\mathbb{Q}"))},
+    {id:"reals",     face:"\\mathbb{R}", tex:"\\mathbb{R}", sub:"reals",
+     act:() => insert(sym("ℝ","\\mathbb{R}"))},
+  ]],
+  ["Calculus", 4, [
+    {id:"ddx",  face:"\\frac{d}{dx}", tex:"\\frac{d}{dx}",
+     act:() => insert(fracOf([ch("d")], [ch("d"), ch("x")]))},
+    {id:"dydx", face:"\\frac{dy}{dx}", tex:"\\frac{dy}{dx}",
+     act:() => insert(fracOf([ch("d"), ch("y")], [ch("d"), ch("x")]))},
+    {id:"dgen", face:"\\frac{d{}}{d{}}", tex:"\\frac{dy}{dx}",
+     act:() => { const n = blank(), d = blank();
+                 const f = fracOf([ch("d"), n], [ch("d"), d]);
+                 insert(f); cur = {list:n.s[0], i:0}; relink(); }},
+    {id:"d2gen",face:"\\frac{d^{2}{}}{d{}}", tex:"\\frac{d^{2}y}{dx}",
+     act:() => { const n = blank(), d = blank();
+                 const f = fracOf([ch("d"), supOf("2"), n], [ch("d"), d]);
+                 insert(f); cur = {list:n.s[0], i:0}; relink(); }},
+    {id:"lim",  face:"\\lim_{}{}", tex:"\\lim_{x \\to a}", sub:"limit",
+     act:() => { const l = limop(); l.wantBounds = true;
+                 insertSeq([l, blank()], 2);
+                 cur = {list:l.s[0], i:0}; relink(); }},
+    {id:"sum",  face:"\\sum_{}^{}", tex:"\\sum_{n=1}^{N}", sub:"sum",
+     act:() => { const n = bigop("∑","\\sum","stack"); n.wantBounds = true;
+                 insert(n); cur = {list:n.s[0], i:0}; relink(); }},
+    {id:"intInd", face:"\\int", tex:"\\int", sub:"indefinite integral",
+     act:() => insert(bigop("∫","\\int","side"))},
+    {id:"intDef", face:"\\int_{a}^{b}", tex:"\\int_{a}^{b}", sub:"definite integral",
+     act:() => { const n = bigop("∫","\\int","side"); n.wantBounds = true;
+                 insert(n); cur = {list:n.s[0], i:0}; relink(); }},
+  ]],
+  ["Trigonometry", 3, [
+    {id:"sin", face:"\\sin", tex:"\\sin", act:() => insert(fn("sin"))},
+    {id:"cos", face:"\\cos", tex:"\\cos", act:() => insert(fn("cos"))},
+    {id:"tan", face:"\\tan", tex:"\\tan", act:() => insert(fn("tan"))},
+    {id:"asin",face:"\\sin^{-1}", tex:"\\sin^{-1}", act:() => invTrig("sin")},
+    {id:"acos",face:"\\cos^{-1}", tex:"\\cos^{-1}", act:() => invTrig("cos")},
+    {id:"atan",face:"\\tan^{-1}", tex:"\\tan^{-1}", act:() => invTrig("tan")},
+    {id:"sec", face:"\\sec", tex:"\\sec", act:() => insert(fn("sec"))},
+    {id:"csc", face:"\\csc", tex:"\\csc", act:() => insert(fn("csc"))},
+    {id:"cot", face:"\\cot", tex:"\\cot", act:() => insert(fn("cot"))},
+  ]],
+  ["Exponents & logs", 2, [
+    {id:"log",  face:"\\log",     tex:"\\log",     act:() => insert(fn("log"))},
+    {id:"logb", face:"\\log_{}",  tex:"\\log_{a}",
+     act:() => { insert(fn("log")); insertTemplate(sub()); }},
+    {id:"ln",   face:"\\ln",      tex:"\\ln",      act:() => insert(fn("ln"))},
+    {id:"ex",   face:"e^{}",      tex:"e^{x}",
+     act:() => { insert(ch("e")); insertTemplate(sup()); }},
+  ]],
+];
+
+
+
+/* The LaTeX bubble. It is positioned fixed and lives on <body>: the palette
+   scrolls, and a scrolling box clips its children on both axes, so a bubble
+   parented to the button would be cut off at the panel edge. */
+const tipEl = document.createElement("div");
+tipEl.className = "tip";
+tipEl.hidden = true;
+document.body.appendChild(tipEl);
+
+function showTip(btn, text){
+  tipEl.textContent = text;
+  tipEl.hidden = false;
+  const r = btn.getBoundingClientRect();
+  const t = tipEl.getBoundingClientRect();
+  let left = r.left + r.width / 2 - t.width / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - t.width - 8));
+  let top = r.top - t.height - 8;
+  if(top < 8) top = r.bottom + 8;          // no room above: sit underneath
+  tipEl.style.left = left + "px";
+  tipEl.style.top = top + "px";
+}
+function hideTip(){ tipEl.hidden = true; }
+
+const paletteEl = document.getElementById("palette");
+paletteEl.addEventListener("scroll", hideTip);
+window.addEventListener("scroll", hideTip, true);
+function buildPalette(){
+PALETTE.forEach(([title, cols, items]) => {
+  const g = document.createElement("div"); g.className = "pgroup";
+  const lb = document.createElement("span"); lb.className="lbl"; lb.textContent = title;
+  const grid = document.createElement("div"); grid.className = "pgrid";
+  grid.style.gridTemplateColumns = "repeat(" + cols + ", minmax(0, 1fr))";
+  items.forEach(it => {
+    const b = document.createElement("button");
+    b.className = "pbtn" + (it.sub ? " two" : "");
+    b.type = "button";
+
+    // the face is real typeset mathematics, rendered by the editor itself —
+    // an empty slot in the face LaTeX comes out as the same dotted box the
+    // student will be typing into
+    const face = document.createElement("span");
+    face.className = "face";
+    const parsed = parseTex(it.face);
+    link(parsed.list, null);
+    face.appendChild(renderList(parsed.list, false));
+    b.appendChild(face);
+
+    if(it.sub){
+      const n = document.createElement("span");
+      n.className = "sub"; n.textContent = it.sub;
+      b.appendChild(n);
+    }
+    b.dataset.id = it.id;
+    b.setAttribute("aria-label", (it.sub ? it.sub + " " : "") + it.id + " — " + it.tex);
+
+    b.addEventListener("pointerenter", () => showTip(b, it.tex));
+    b.addEventListener("pointerleave", hideTip);
+    b.addEventListener("focus", () => showTip(b, it.tex));
+    b.addEventListener("blur", hideTip);
+    b.addEventListener("mousedown", e => {
+      e.preventDefault();
+      if(isLocked()) return;
+      const ln = curLine();
+      if(!ln || ln.kind !== "math") return;
+      it.act();
+      render();
+      hidden.focus();
+    });
+    grid.appendChild(b);
+  });
+  g.append(lb, grid);
+  paletteEl.appendChild(g);
+});
+fitDelims(paletteEl);
+}
+
+/* =========================================================================
+   9b. LaTeX IMPORT   (LaTeX text -> expression tree)
+   The inverse of texList(). Everything the editor can produce parses back
+   to the same tree; hand-written LaTeX is accepted on a best-effort basis
+   and anything unrecognised is reported rather than silently dropped.
+   ========================================================================= */
+const TEX_SYMS = {
+  pi:["π","\\pi"], theta:["θ","\\theta"], alpha:["α","\\alpha"], beta:["β","\\beta"],
+  gamma:["γ","\\gamma"], delta:["δ","\\delta"], phi:["φ","\\phi"], omega:["ω","\\omega"],
+  lambda:["λ","\\lambda"], mu:["μ","\\mu"], infty:["∞","\\infty"], partial:["∂","\\partial"],
+  prime:["′","'"], ldots:["…","\\ldots"], dots:["…","\\ldots"], angle:["∠","\\angle"],
+  N:["ℕ","\\mathbb{N}"], Z:["ℤ","\\mathbb{Z}"], Q:["ℚ","\\mathbb{Q}"],
+  R:["ℝ","\\mathbb{R}"], C:["ℂ","\\mathbb{C}"],
+};
+const TEX_OPS = {
+  pm:["±","\\pm"], mp:["∓","\\mp"], cdot:["·","\\cdot"], times:["×","\\times"],
+  div:["÷","\\div"], cup:["∪","\\cup"], cap:["∩","\\cap"],
+};
+const TEX_RELS = {
+  le:["≤","\\le"], leq:["≤","\\le"], ge:["≥","\\ge"], geq:["≥","\\ge"],
+  ne:["≠","\\ne"], neq:["≠","\\ne"], approx:["≈","\\approx"],
+  to:["→","\\to"], rightarrow:["→","\\to"], equiv:["≡","\\equiv"],
+  in:["∈","\\in"], notin:["∉","\\notin"], Rightarrow:["⇒","\\Rightarrow"], implies:["⇒","\\Rightarrow"], subset:["⊂","\\subset"], subseteq:["⊆","\\subseteq"],
+};
+const TEX_BIGOPS = {
+  sum:["∑","\\sum","stack"], prod:["∏","\\prod","stack"],
+  int:["∫","\\int","side"], oint:["∮","\\oint","side"], iint:["∬","\\iint","side"],
+};
+const TEX_SPACING = new Set([",", ";", ":", "!", " ", "quad", "qquad", "thinspace", ","]);
+const TEX_IGNORE  = new Set(["displaystyle","textstyle","limits","nolimits","left.","!"]);
+const MATRIX_ENVS = { bmatrix:["[","]"], pmatrix:["(",")"], vmatrix:["|","|"], Bmatrix:["{","}"] };
+const BLACKBOARD = { N:"ℕ", Z:"ℤ", Q:"ℚ", R:"ℝ", C:"ℂ" };
+const CLOSER_OF = { "(":")", "[":"]", "{":"}" };
+
+function texTokens(src){
+  const out = []; let i = 0;
+  while(i < src.length){
+    const c = src[i];
+    if(c === "\\"){
+      const m = /^[A-Za-z]+/.exec(src.slice(i+1));
+      // \text{…} is captured raw — the tokenizer drops whitespace everywhere
+      // else, and the spaces between words obviously have to survive
+      if(m && m[0] === "text" && src[i + 1 + m[0].length] === "{"){
+        let j = i + 2 + m[0].length, depth = 1, raw = "";
+        while(j < src.length && depth > 0){
+          const d = src[j];
+          if(d === "\\" && j + 1 < src.length){ raw += src[j+1]; j += 2; continue; }
+          if(d === "{"){ depth++; }
+          else if(d === "}"){ depth--; if(depth === 0){ j++; break; } }
+          raw += d; j++;
+        }
+        out.push({k:"text", v:raw});
+        i = j;
+        continue;
+      }
+      if(m){ out.push({k:"cmd", v:m[0]}); i += 1 + m[0].length; }
+      else { out.push({k:"cmd", v:src[i+1] || ""}); i += 2; }
+    }
+    else if(c === "{" || c === "}" || c === "^" || c === "_" || c === "&"){ out.push({k:c}); i++; }
+    else if(/\s/.test(c)){ i++; }
+    else { out.push({k:"ch", v:c}); i++; }
+  }
+  return out;
+}
+
+/* Which bare ( [ | have partners? Unmatched ones stay literal characters. */
+function opensWith(t){
+  if(t.k === "ch" && (t.v === "(" || t.v === "[")) return t.v;
+  if(t.k === "cmd" && t.v === "{") return "{";      // a literal \{
+  return null;
+}
+function closesWith(t){
+  if(t.k === "ch" && (t.v === ")" || t.v === "]")) return t.v;
+  if(t.k === "cmd" && t.v === "}") return "}";      // a literal \}
+  return null;
+}
+
+function pairMap(toks){
+  const map = {}, stack = [];
+  let barOpen = -1;
+  for(let i=0;i<toks.length;i++){
+    const t = toks[i];
+    const open = opensWith(t), close = closesWith(t);
+    if(open){ stack.push(i); }
+    else if(close){
+      for(let j=stack.length-1;j>=0;j--){
+        const o = stack[j];
+        if(CLOSER_OF[opensWith(toks[o])] === close){ map[o] = i; map[i] = o; stack.splice(j,1); break; }
+      }
+    }
+    else if(t.k === "ch" && t.v === "|"){
+      if(barOpen < 0) barOpen = i;
+      else { map[barOpen] = i; map[i] = barOpen; barOpen = -1; }
+    }
+  }
+  return map;
+}
+
+function parseTex(src){
+  const toks = texTokens(src);
+  const pairs = pairMap(toks);
+  const warnings = [];
+  let p = 0;
+
+  const peek = () => toks[p];
+  const isCmd = (t,v) => t && t.k === "cmd" && t.v === v;
+
+  function parseGroup(){
+    const t = peek();
+    if(!t) return L();
+    // "x^" at the end of a group: take nothing rather than eating the outer "}"
+    if(t.k === "}" || t.k === "&" || isCmd(t,"\\") || isCmd(t,"right") || isCmd(t,"end")) return L();
+    if(t.k === "{"){
+      p++;
+      const l = parseList({brace:true});
+      if(peek() && peek().k === "}") p++;
+      return l;
+    }
+    const l = L();
+    const before = p;
+    const n = parseOne(l);
+    if(p === before) p++;              // never spin on an unconsumed token
+    if(n) l.push(...(Array.isArray(n) ? n : [n]));
+    return l;
+  }
+
+  function stopHere(stops){
+    const t = peek();
+    if(!t) return true;
+    if(stops.brace && t.k === "}") return true;
+    if(stops.cell && (t.k === "&" || isCmd(t,"\\") || isCmd(t,"end"))) return true;
+    if(stops.right && isCmd(t,"right")) return true;
+    if(stops.closerAt !== undefined && p === stops.closerAt) return true;
+    return false;
+  }
+
+  function parseList(stops){
+    const list = L();
+    while(!stopHere(stops)){
+      const before = p;
+      const t = peek();
+
+      // sub/superscript attaches to the big operator it follows
+      if(t.k === "^" || t.k === "_"){
+        const prev = list[list.length-1];
+        const isSup = t.k === "^";
+        p++;
+        if(isSup && isCmd(peek(),"circ")){ p++; list.push(sym("°","^\\circ")); continue; }
+        const g = parseGroup();
+        if(prev && (prev.t === "bigop" || prev.t === "limop")){
+          const slot = prev.t === "limop" ? 0 : (isSup ? 1 : 0);
+          prev.wantBounds = true;
+          if(prev.s[slot]) prev.s[slot].push(...g); else prev.s[0].push(...g);
+        } else {
+          const node = isSup ? sup() : sub();
+          node.s[0].push(...g);
+          list.push(node);
+        }
+        continue;
+      }
+
+      const n = parseOne(list);
+      if(n) list.push(...(Array.isArray(n) ? n : [n]));
+      if(p === before) p++;            // guard against an infinite loop
+    }
+    return list;
+  }
+
+  function readDelimToken(){
+    const t = peek();
+    if(!t) return ".";
+    p++;
+    if(t.k === "cmd"){
+      if(t.v === "{" || t.v === "}") return t.v;
+      if(t.v === "lvert" || t.v === "vert") return "|";
+      return ".";
+    }
+    return t.v;
+  }
+
+  function parseEnv(){
+    p++;                                // past \begin
+    let name = "";
+    if(peek() && peek().k === "{"){
+      p++;
+      while(peek() && peek().k !== "}"){ name += (peek().v || ""); p++; }
+      if(peek()) p++;
+    }
+    const rows = [];
+    let row = [];
+    while(peek() && !isCmd(peek(),"end")){
+      row.push(parseList({cell:true}));
+      const t = peek();
+      if(t && t.k === "&"){ p++; continue; }
+      if(isCmd(t,"\\")){ p++; rows.push(row); row = []; continue; }
+      break;
+    }
+    if(row.length) rows.push(row);
+    if(isCmd(peek(),"end")){
+      p++;
+      if(peek() && peek().k === "{"){ p++; while(peek() && peek().k !== "}") p++; if(peek()) p++; }
+    }
+    const nRows = Math.max(1, rows.length);
+    const nCols = Math.max(1, ...rows.map(r => r.length));
+    let node;
+    if(name === "cases"){ node = cases(nRows, nCols); }
+    else if(MATRIX_ENVS[name]){ const d = MATRIX_ENVS[name]; node = mat(nRows, nCols, d[0], d[1]); }
+    else { warnings.push("\\begin{" + name + "} is not supported — read as a plain grid");
+           node = mat(nRows, nCols, "[", "]"); }
+    for(let r=0;r<nRows;r++){
+      for(let c=0;c<nCols;c++){
+        const cell = rows[r] && rows[r][c];
+        if(cell) node.s[r*nCols+c].push(...cell);
+      }
+    }
+    return node;
+  }
+
+  function parseOne(list){
+    const t = peek();
+    if(!t) return null;
+
+    if(t.k === "text"){ p++; return [...t.v].map(c => tc(c)); }
+
+    if(t.k === "{" && toks[p+1] && toks[p+1].k === "}"){ p += 2; return blank(); }
+
+    if(t.k === "ch"){
+      const v = t.v;
+      // a bare delimiter that has a partner becomes a real grouping node
+      if((v === "(" || v === "[" || v === "|") && pairs[p] !== undefined){
+        const closerAt = pairs[p];
+        p++;
+        const body = parseList({closerAt});
+        const right = toks[closerAt] ? toks[closerAt].v : v;
+        p = Math.max(p, closerAt + 1);
+        const d = delim(v, v === "|" ? "|" : right);
+        d.s[0].push(...body);
+        return d;
+      }
+      p++;
+      if(v === "+") return op("+","+");
+      if(v === "-") return op("−","-");
+      if(v === "=" || v === "<" || v === ">") return rel(v,v);
+      if(v === "," || v === ";") return sym(v,v);
+      if(v === "'") return sym("′","'");
+      return ch(v);
+    }
+
+    if(t.k === "cmd"){
+      const v = t.v;
+
+      if(TEX_SPACING.has(v)){
+        p++;
+        return SPC_W[v] ? spc(SPC_W[v], "\\" + v) : null;   // \! and \  vanish
+      }
+      if(TEX_IGNORE.has(v)){ p++; return null; }
+
+      if(v === "frac" || v === "dfrac" || v === "tfrac"){
+        p++;
+        const f = frac();
+        f.s[0].push(...parseGroup());
+        f.s[1].push(...parseGroup());
+        return f;
+      }
+      if(v === "sqrt"){
+        p++;
+        if(peek() && peek().k === "ch" && peek().v === "["){
+          const closerAt = pairs[p];
+          p++;
+          // the index is a full expression, so it goes through parseList —
+          // parsing it token by token loses ^ and _ inside it
+          let idx;
+          if(closerAt !== undefined){
+            idx = parseList({closerAt});
+            p = Math.max(p, closerAt + 1);
+          } else {
+            idx = L();
+            while(peek() && !(peek().k === "ch" && peek().v === "]")){
+              const before = p;
+              const n = parseOne(idx);
+              if(n) idx.push(...(Array.isArray(n)?n:[n]));
+              if(p === before) p++;
+            }
+            if(peek()) p++;
+          }
+          const r = root();
+          r.s[0].push(...idx);
+          r.s[1].push(...parseGroup());
+          return r;
+        }
+        const s = sqrt();
+        s.s[0].push(...parseGroup());
+        return s;
+      }
+      if(v === "left"){
+        p++;
+        const l = readDelimToken();
+        const body = parseList({right:true});
+        let r = ".";
+        if(isCmd(peek(),"right")){ p++; r = readDelimToken(); }
+        const d = delim(l, r);
+        d.s[0].push(...body);
+        return d;
+      }
+      if(v === "begin") return parseEnv();
+      if(v === "lim"){ p++; return limop(); }
+      if(TEX_BIGOPS[v]){ p++; const b = TEX_BIGOPS[v]; return bigop(b[0], b[1], b[2]); }
+      if(FUNCS.includes(v)){ p++; return fn(v); }
+      if(TEX_SYMS[v]){ p++; const s = TEX_SYMS[v]; return sym(s[0], s[1]); }
+      if(TEX_OPS[v]){ p++; const s = TEX_OPS[v]; return op(s[0], s[1]); }
+      if(TEX_RELS[v]){ p++; const s = TEX_RELS[v]; return rel(s[0], s[1]); }
+      if(v === "mathbb"){
+        p++;
+        const g = parseGroup();
+        const letter = g.map(n => n.v || "").join("");
+        if(BLACKBOARD[letter]) return sym(BLACKBOARD[letter], "\\mathbb{" + letter + "}");
+        warnings.push("\\mathbb{" + letter + "} is not supported yet");
+        return sym(letter, "\\mathbb{" + letter + "}");
+      }
+      if(v === "mathrm" || v === "operatorname"){
+        p++;
+        const g = parseGroup();
+        warnings.push("\\" + v + "{…} was read as ordinary characters");
+        return g;
+      }
+      if(v === "{" && pairs[p] !== undefined){
+        const closerAt = pairs[p];
+        p++;
+        const body = parseList({closerAt});
+        p = Math.max(p, closerAt + 1);
+        const d = delim("{","}");
+        d.s[0].push(...body);
+        return d;
+      }
+      if(v === "{" || v === "}"){ p++; return sym(v, "\\" + v); }
+      if(v === "%" || v === "$" || v === "&" || v === "#"){ p++; return sym(v, "\\" + v); }
+
+      p++;
+      warnings.push("\\" + v + " is not supported yet");
+      return sym("\\" + v, "\\" + v);
+    }
+
+    p++;
+    return null;
+  }
+
+  const out = parseList({});
+  return {list: out, warnings};
+}
+
+/* ---- import panel ---- */
+const importPanel = document.getElementById("importPanel");
+const importText  = document.getElementById("importText");
+const importWarn  = document.getElementById("importWarn");
+
+function openImport(){
+  importPanel.hidden = false;
+  importText.focus();
+  importText.select();
+}
+function closeImport(){
+  importPanel.hidden = true;
+  importWarn.textContent = "";
+  hidden.focus();
+}
+document.getElementById("importBtn").addEventListener("click", () => { if(!isLocked()) openImport(); });
+document.getElementById("importCancel").addEventListener("click", closeImport);
+document.getElementById("importGo").addEventListener("click", () => {
+  const src = importText.value.trim();
+  if(!src){ closeImport(); return; }
+  const rows = src.split(/\n+/).filter(s => s.trim());
+  const allWarn = [];
+  const made = [];
+  for(const r of rows){
+    const {list, warnings} = parseTex(r.replace(/^\$+|\$+$/g, "").replace(/\\\[|\\\]/g, ""));
+    const ln = newMathLine();
+    ln.root.push(...list);
+    link(ln.root, null);
+    made.push(ln);
+    allWarn.push(...warnings);
+  }
+  // replace the focused line if it is empty, otherwise insert below it
+  const at = curLine() && curLine().kind === "math" && curLine().root.length === 0
+    ? focusLine : focusLine + 1;
+  if(at === focusLine) lines.splice(at, 1, ...made);
+  else lines.splice(at, 0, ...made);
+  focusLine = at + made.length - 1;
+  const ln = lines[focusLine];
+  cur = {list:ln.root, i:ln.root.length};
+  sel = null;
+  relink();
+  render();
+  const uniq = [...new Set(allWarn)];
+  if(uniq.length){
+    importWarn.textContent = uniq.join(" · ");
+    importText.value = "";
+  } else {
+    closeImport();
+  }
+});
+importText.addEventListener("keydown", e => {
+  if(e.key === "Escape"){ e.preventDefault(); closeImport(); }
+  if(e.key === "Enter" && (e.metaKey || e.ctrlKey)){
+    e.preventDefault();
+    document.getElementById("importGo").click();
+  }
+});
+
+/* =========================================================================
+   10. TOOLBAR
+   ========================================================================= */
+document.getElementById("addNote").addEventListener("click", () => {
+  if(isLocked()) return;
+  insertLineAfter(focusLine, newMathLine());
+  textMode = true;                 // starts in words; "$" switches to maths
+  render();
+  hidden.focus();
+});
+document.getElementById("clearAll").addEventListener("click", () => {
+  if(isLocked()) return;
+  resetBoard(); render(); hidden.focus();
+});
+function toggleTheme(){
+  const now = document.documentElement.getAttribute("data-theme");
+  const dark = now ? now === "dark"
+    : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+}
+document.getElementById("themeBtn").addEventListener("click", () => { toggleTheme(); refocusEditor(); });
+document.getElementById("tTheme").addEventListener("click", toggleTheme);
+
+window.addEventListener("resize", fitDelims);
+
+/* =========================================================================
+   11. START
+   ========================================================================= */
+
+/* -------------------------------------------------------------------------
+   KEEPING THE KEYBOARD
+   All typing goes through one hidden textarea, so if anything else takes
+   focus the board silently stops accepting keys. Two places used to do that:
+   clicking the board's padding rather than a line, and clicking a toolbar
+   button (which is why picking a palette symbol appeared to "fix" it — the
+   palette hands focus back and nothing else did).
+   ------------------------------------------------------------------------- */
+function refocusEditor(){
+  const bv = document.getElementById("viewBoard");
+  if(bv && bv.hidden) return;                       // not on the board screen
+  const modal = document.getElementById("importPanel");
+  if(modal && !modal.hidden) return;                // the paste box wants it
+  hidden.focus();
+}
+document.addEventListener("mousedown", e => {
+  const t = e.target;
+  if(!t || !t.closest) return;
+  if(t.closest("input, textarea, select, a, .modal")) return;
+  if(t.closest(".inspector")) return;               // let the LaTeX be selected
+  setTimeout(refocusEditor, 0);
+});
+/* and make the state visible, so "why can't I type" is answerable at a glance */
+hidden.addEventListener("focus", () => boardEl.classList.add("armed"));
+hidden.addEventListener("blur",  () => boardEl.classList.remove("armed"));
+
+buildPalette();
+resetBoard();
+render();
+setTimeout(()=>{ hidden.focus(); }, 60);
+document.addEventListener("mousedown", e => {
+  if(!e.target.closest(".palette") && !e.target.closest(".board") && !e.target.closest(".topbar")) return;
+});
+
+
+/* =========================================================================
+   12. THE SHARED BOARD
+   Sync sits behind one small interface. LocalSync below talks between
+   windows on this machine and needs no account or server; a Firebase
+   implementation slots in beside it without touching anything else.
+   ========================================================================= */
+
+
+/* =========================================================================
+   FIREBASE
+   Paste the config from your Firebase project below and the board switches
+   from same-machine sync to real devices. Leave apiKey empty and it keeps
+   using LocalSync, which works between windows on one computer.
+
+   These values are public by design — they identify the project, they do not
+   grant access. Access is controlled by the database rules (firebase-rules.json).
+   ========================================================================= */
+const FIREBASE_CONFIG = {
+  apiKey: "",
+  authDomain: "",
+  databaseURL: "",
+  projectId: "",
+  appId: ""
+};
+const FB_SDK = "https://www.gstatic.com/firebasejs/12.18.0/";
+
+/* ---- sync interface --------------------------------------------------- */
+function LocalSync(room){
+  const ch = new BroadcastChannel("chalkline:" + room);
+  const handlers = {};
+  ch.onmessage = e => {
+    const msg = e.data || {};
+    (handlers[msg.type] || []).forEach(fn => fn(msg));
+  };
+  const id = "s" + Math.random().toString(36).slice(2, 9);
+  return {
+    on(type, fn){ (handlers[type] = handlers[type] || []).push(fn); },
+    send(type, payload){ ch.postMessage(Object.assign({type}, payload)); },
+    ready(fn){ setTimeout(() => fn(id), 0); },
+    close(){ try{ ch.close(); }catch(e){} }
+  };
+}
+
+/* ---- the same three methods, over Firebase --------------------------------
+   The app speaks in messages; a database speaks in state. This adapter is
+   where the two meet, and it is the only place that knows the difference.
+
+   rooms/<code>/
+     boards/<uid>    {name, lines[], at}      written by that student alone
+     feedback/<uid>  {lines[]}
+     checks/<uid>    true | false
+     problem         {lines[], images[], at}
+     timer           {endsAt}                 server time, so late joiners agree
+     closed          <timestamp>              a pulse, not a state
+   ------------------------------------------------------------------------- */
+function FirebaseSync(room){
+  const handlers = {};
+  const queue = [];
+  let d = null, db = null, uid = null, offset = 0, dead = false;
+  let lastClosed = 0;
+  const readyCbs = [];
+  const R = "rooms/" + room;
+
+  const fire = (type, msg) => { if(!dead) (handlers[type] || []).forEach(f => f(msg)); };
+
+  function doSend(type, p){
+    if(!d || dead) return;
+    if(type === "hello") return;              // a database needs no roll-call
+    if(type === "board"){
+      const r = d.ref(db, R + "/boards/" + uid);
+      d.onDisconnect(r).remove();             // close the tab, leave the wall
+      d.set(r, {name:p.name || "student", lines:p.lines || [], at:d.serverTimestamp()});
+    }
+    else if(type === "feedback") d.set(d.ref(db, R + "/feedback/" + p.id), {lines:p.lines || []});
+    else if(type === "check")    d.set(d.ref(db, R + "/checks/" + p.id), !!p.on);
+    else if(type === "problem")  d.set(d.ref(db, R + "/problem"),
+                                       {lines:p.lines || [], images:p.images || [], at:d.serverTimestamp()});
+    else if(type === "timer"){
+      if(!p.seconds) d.remove(d.ref(db, R + "/timer"));
+      else d.set(d.ref(db, R + "/timer"), {endsAt: Date.now() + offset + p.seconds * 1000});
+    }
+    else if(type === "close"){
+      // one write clears the room and pulses everyone
+      d.set(d.ref(db, R), {closed: Date.now() + offset});
+    }
+  }
+
+  (async () => {
+    setConn("connecting");
+    const [appMod, dbMod, authMod] = await Promise.all([
+      import(FB_SDK + "firebase-app.js"),
+      import(FB_SDK + "firebase-database.js"),
+      import(FB_SDK + "firebase-auth.js")
+    ]);
+    const app  = appMod.initializeApp(FIREBASE_CONFIG);
+    const auth = authMod.getAuth(app);
+    const cred = await authMod.signInAnonymously(auth);
+    uid = cred.user.uid;
+    db  = dbMod.getDatabase(app);
+    d   = dbMod;
+
+    // every device counts the clock down from the same instant
+    d.onValue(d.ref(db, ".info/serverTimeOffset"), s => { offset = s.val() || 0; });
+    d.onValue(d.ref(db, ".info/connected"), s => setConn(s.val() ? "online" : "offline"));
+
+    const boards = d.ref(db, R + "/boards");
+    d.onChildAdded(boards,   s => fire("board", Object.assign({id:s.key}, s.val())));
+    d.onChildChanged(boards, s => fire("board", Object.assign({id:s.key}, s.val())));
+    d.onChildRemoved(boards, s => fire("gone", {id:s.key}));
+
+    d.onValue(d.ref(db, R + "/feedback/" + uid),
+      s => fire("feedback", {id:uid, lines:(s.val() || {}).lines || []}));
+    d.onValue(d.ref(db, R + "/checks/" + uid),
+      s => fire("check", {id:uid, on: !!s.val()}));
+    d.onValue(d.ref(db, R + "/problem"), s => {
+      const v = s.val();
+      fire("problem", {lines:(v && v.lines) || [], images:(v && v.images) || []});
+    });
+    d.onValue(d.ref(db, R + "/timer"), s => {
+      const v = s.val();
+      if(!v || !v.endsAt) return fire("timer", {seconds:0});
+      fire("timer", {seconds: Math.max(0, Math.round((v.endsAt - (Date.now() + offset)) / 1000))});
+    });
+    d.onValue(d.ref(db, R + "/closed"), s => {
+      const t = s.val() || 0;
+      if(t && t !== lastClosed){ lastClosed = t; fire("close", {}); }
+    });
+
+    readyCbs.forEach(f => f(uid));
+    queue.splice(0).forEach(([t, p]) => doSend(t, p));
+  })().catch(err => {
+    dead = true;
+    setConn("failed", err && err.message);
+  });
+
+  return {
+    on(type, fn){ (handlers[type] = handlers[type] || []).push(fn); },
+    send(type, payload){ d ? doSend(type, payload) : queue.push([type, payload]); },
+    ready(fn){ uid ? fn(uid) : readyCbs.push(fn); },
+    close(){
+      dead = true;
+      if(d && uid) try{ d.remove(d.ref(db, R + "/boards/" + uid)); }catch(e){}
+    }
+  };
+}
+
+function makeSync(room){
+  return FIREBASE_CONFIG.apiKey ? FirebaseSync(room) : LocalSync(room);
+}
+
+/* a visible answer to "is this actually connected?" */
+function setConn(state, detail){
+  const label = {connecting:"connecting…", online:"live", offline:"reconnecting…",
+                 failed:"not connected"}[state] || state;
+  ["connChipS", "connChipT"].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.hidden = !FIREBASE_CONFIG.apiKey;
+    el.textContent = label;
+    el.className = "conn " + state;
+    if(detail) el.title = detail;
+  });
+}
+/* A FirebaseSync(room) returning the same three methods is the only thing
+   needed to make this work across real devices. Message shapes:
+     board   {id, name, lines:[latex], at}   student → everyone
+     hello   {}                              teacher → students, "who is here?"
+     edit    {id, lines:[latex]}             teacher → one student
+     problem {lines:[latex]}                 teacher → all students          */
+
+/* ---- app state -------------------------------------------------------- */
+/* state declared at the top of the file; modes: idle | student | teacherEdit | problem */
+const boards = new Map();              // id -> {id, name, lines, at}
+
+const screens = {
+  landing: document.getElementById("viewLanding"),
+  board:   document.getElementById("viewBoard"),
+  teacher: document.getElementById("viewTeacher")
+};
+function showScreen(name){
+  for(const k in screens) screens[k].hidden = (k !== name);
+  if(name === "board") setTimeout(() => hidden.focus(), 30);
+}
+
+/* ---- moving whole boards in and out of the editor ---------------------- */
+function currentLines(){
+  return lines.map(l => texList(l.root));
+}
+function loadLines(arr){
+  lines = (arr && arr.length ? arr : [""]).map(t => {
+    const ln = newMathLine();
+    if(t) ln.root.push(...parseTex(t).list);
+    return ln;
+  });
+  focusLine = lines.length - 1;
+  const ln = lines[focusLine];
+  cur = {list:ln.root, i:ln.root.length};
+  sel = null; pending = null; textMode = false;
+  relink();
+  render();
+}
+function flashBoard(){
+  boardEl.classList.remove("flash");
+  void boardEl.offsetWidth;
+  boardEl.classList.add("flash");
+}
+
+/* ---- publishing ------------------------------------------------------- */
+function schedulePublish(){
+  if(!sync) return;
+  clearTimeout(pubTimer);
+  pubTimer = setTimeout(publishNow, 180);
+}
+function publishNow(){
+  if(!sync) return;
+  if(editorTarget.mode === "student"){
+    sync.send("board", {id:myId, name:myName, lines:currentLines(), at:Date.now()});
+  } else if(editorTarget.mode === "feedback"){
+    sync.send("feedback", {id:editorTarget.boardId, lines:currentLines()});
+  }
+}
+
+/* ---- joining ---------------------------------------------------------- */
+function join(asRole, room, name){
+  role = asRole;
+  myRoom = (room || "ALG2").trim().toUpperCase();
+  myName = (name || "").trim();
+  sync = makeSync(myRoom);
+  location.hash = "room=" + encodeURIComponent(myRoom) +
+                  "&role=" + asRole +
+                  (asRole === "student" ? "&name=" + encodeURIComponent(myName) : "");
+
+  if(asRole === "student"){
+    editorTarget = {mode:"student"};
+    document.querySelector("#viewBoard .brand .tag").textContent = myName + " · " + myRoom;
+    document.getElementById("leaveBtn").hidden = false;
+    resetBoard(); render(); showScreen("board");
+
+    sync.on("hello", publishNow);
+
+    sync.on("problem", m => {
+      // the problem is a prompt to read, not something typed into their work
+      problemImages = m.images || [];
+      problemLines  = m.lines || [];
+      document.getElementById("probStrip").classList.remove("collapsed");
+      document.getElementById("probToggle").textContent = "Hide";
+      showStrip();
+    });
+    sync.on("feedback", m => {
+      if(m.id !== myId) return;
+      myFeedback = m.lines || [];
+      showFeedback();
+    });
+    sync.on("check", m => {
+      if(m.id !== myId) return;
+      myCheck = !!m.on;
+      showTick();
+    });
+    sync.on("timer", m => startTimer(m.seconds));
+    sync.on("close", () => {
+      startTimer(0);
+      problemImages = []; problemLines = []; myFeedback = []; myCheck = false;
+      showStrip(); showFeedback(); showTick();
+      loadLines([]);
+      flashBoard();
+    });
+    // the id comes from the sync layer: a Firebase anonymous uid, or a local one
+    sync.ready(id => {
+      myId = id;
+      publishNow();
+      heartbeat = setInterval(publishNow, 8000);
+    });
+
+  } else {
+    editorTarget = {mode:"idle"};
+    document.getElementById("tRoom").textContent = "Class " + myRoom;
+    document.getElementById("tLink").value =
+      location.origin + location.pathname + "#room=" + encodeURIComponent(myRoom) + "&role=student";
+    document.getElementById("tEmptyRoom").textContent = myRoom;
+    showScreen("teacher");
+    sync.on("board", m => {
+      const prev = boards.get(m.id) || {};
+      boards.set(m.id, {id:m.id, name:m.name || "student", lines:m.lines || [],
+                        at:m.at || Date.now(),
+                        feedback:prev.feedback || [], check:!!prev.check});
+      if(editorTarget.mode === "feedback") refreshOpenBoard(m.id);
+      else updateTile(m.id);
+    });
+    sync.on("gone", m => {          // a student closed their tab
+      boards.delete(m.id);
+      drawTiles();
+    });
+    sync.ready(() => sync.send("hello", {}));
+    agoTimer = setInterval(refreshAges, 5000);
+  }
+}
+function leave(){
+  clearInterval(heartbeat); clearInterval(agoTimer); clearTimeout(pubTimer);
+  if(sync) sync.close();
+  sync = null; role = null; boards.clear();
+  clearTimeout(flushTimer); flushTimer = null; dirtyTiles.clear();
+  tileEls.forEach(el => el.remove()); tileEls.clear();
+  clearInterval(timerTick); timerTick = null; timerEnd = 0;
+  problemImages = []; showStrip();
+  editorTarget = {mode:"idle"};
+  location.hash = "";
+  document.getElementById("leaveBtn").hidden = true;
+  document.getElementById("actingBar").hidden = true;
+  showScreen("landing");
+}
+
+/* ---- teacher: the wall of boards -------------------------------------- */
+function ago(ms){
+  const s = Math.round((Date.now() - ms) / 1000);
+  if(s < 5) return "now";
+  if(s < 60) return s + "s ago";
+  return Math.round(s / 60) + "m ago";
+}
+function renderStatic(host, arr, deferFit){
+  host.textContent = "";
+  const rows = (arr || []).filter(t => t.trim());
+  if(!rows.length){
+    const b = document.createElement("div");
+    b.className = "blank"; b.textContent = "empty board";
+    host.appendChild(b);
+    return;
+  }
+  rows.slice(0, 7).forEach((t, i) => {
+    const row = document.createElement("div"); row.className = "line";
+    const g = document.createElement("div"); g.className = "gutter";
+    const n = document.createElement("b"); n.textContent = i + 1; g.appendChild(n);
+    const body = document.createElement("div"); body.className = "linebody";
+    const f = document.createElement("span"); f.className = "field";
+    const parsed = parseTex(t);
+    link(parsed.list, null);
+    f.appendChild(renderList(parsed.list, false));
+    body.appendChild(f);
+    row.append(g, body);
+    host.appendChild(row);
+  });
+  if(rows.length > 7){
+    const m = document.createElement("div");
+    m.className = "blank"; m.textContent = "+" + (rows.length - 7) + " more";
+    host.appendChild(m);
+  }
+  if(!deferFit) fitDelims(host);
+}
+/* One tile per student, kept in a map. A class of twenty typing at once sends
+   a hundred updates a second; rebuilding every tile on each one would re-render
+   twenty boards of mathematics a hundred times a second. Only the board that
+   actually changed is redrawn, and no faster than every 250ms. */
+const tileEls = new Map();
+
+function buildTile(b){
+  const tile = document.createElement("button");
+  tile.type = "button";
+  tile.className = "tile";
+  const head = document.createElement("div"); head.className = "tilehead";
+  const nm = document.createElement("b");
+  const t = document.createElement("span"); t.className = "ago";
+  head.append(nm, t);
+  const body = document.createElement("div"); body.className = "tilebody";
+  tile.append(head, body);
+  tile.addEventListener("click", () => openBoard(b.id));
+  tile.__name = nm; tile.__ago = t; tile.__body = body; tile.__sig = null;
+  return tile;
+}
+function paintTile(tile, b, deferFit){
+  tile.classList.toggle("stale", Date.now() - b.at > 25000);
+  tile.__ago.textContent = ago(b.at);
+  const sig = b.name + "|" + (b.check ? "1" : "0");
+  if(tile.__nameSig !== sig){
+    tile.__nameSig = sig;
+    tile.__name.textContent = b.name;
+    if(b.check){
+      const k = document.createElement("span");
+      k.className = "ticked"; k.textContent = "✓";
+      tile.__name.appendChild(k);
+    }
+  }
+  const body = b.lines.join("\u0001");
+  if(tile.__sig !== body){            // only re-typeset when the maths changed
+    tile.__sig = body;
+    renderStatic(tile.__body, b.lines, deferFit);
+  }
+}
+function drawTiles(){
+  const host = document.getElementById("tiles");
+  const list = [...boards.values()].sort((a, b) => a.name.localeCompare(b.name));
+  document.getElementById("tEmpty").hidden = list.length > 0;
+  const seen = new Set();
+  for(const b of list){
+    seen.add(b.id);
+    let tile = tileEls.get(b.id);
+    if(!tile){ tile = buildTile(b); tileEls.set(b.id, tile); }
+    paintTile(tile, b);
+    host.appendChild(tile);           // appending an existing node just reorders it
+  }
+  for(const [id, el] of tileEls){
+    if(!seen.has(id)){ el.remove(); tileEls.delete(id); }
+  }
+}
+/* Twenty students typing is about a hundred messages a second. Repainting a
+   tile the moment its message lands means a hundred layout passes a second and
+   the wall drops to single-figure frame rates. Dirty tiles are collected and
+   repainted together, at most twice a second, with one layout pass for the
+   whole batch — which is still far faster than anyone can read. */
+const REFRESH_MS = 500;
+const dirtyTiles = new Set();
+let flushTimer = null, lastFlush = 0;
+
+function flushTiles(){
+  flushTimer = null;
+  lastFlush = Date.now();
+  const ids = [...dirtyTiles];
+  dirtyTiles.clear();
+  let touched = false;
+  for(const id of ids){
+    const bd = boards.get(id), tile = tileEls.get(id);
+    if(bd && tile){ paintTile(tile, bd, true); touched = true; }
+  }
+  if(touched) fitDelims(document.getElementById("tiles"));
+}
+function updateTile(id){
+  if(!tileEls.has(id)) return drawTiles();   // a student we have not seen before
+  dirtyTiles.add(id);
+  if(flushTimer) return;
+  flushTimer = setTimeout(flushTiles, Math.max(0, REFRESH_MS - (Date.now() - lastFlush)));
+}
+function refreshAges(){
+  for(const [id, tile] of tileEls){
+    const b = boards.get(id);
+    if(b) { tile.__ago.textContent = ago(b.at); tile.classList.toggle("stale", Date.now() - b.at > 25000); }
+  }
+}
+
+/* ---- teacher: writing on one student's board -------------------------- */
+function openBoard(id){
+  const b = boards.get(id);
+  if(!b) return;
+  editorTarget = {mode:"feedback", boardId:id};
+  document.getElementById("actingName").textContent = b.name;
+  document.getElementById("actingBar").hidden = false;
+  document.getElementById("leaveBtn").hidden = true;
+  document.getElementById("workWho").textContent = b.name;
+  document.getElementById("workPanel").hidden = false;
+  renderStatic(document.getElementById("workLines"), b.lines);
+  document.getElementById("actingCheck").classList.toggle("checked", !!b.check);
+  document.querySelector("#viewBoard .brand .tag").textContent = b.name + " · " + myRoom;
+  loadLines(b.feedback || []);
+  showScreen("board");
+}
+/* their work keeps updating underneath while feedback is being written */
+function refreshOpenBoard(id){
+  if(editorTarget.mode !== "feedback" || editorTarget.boardId !== id) return;
+  const b = boards.get(id);
+  if(b) renderStatic(document.getElementById("workLines"), b.lines);
+}
+document.getElementById("actingCheck").addEventListener("click", () => {
+  if(editorTarget.mode !== "feedback") return;
+  const b = boards.get(editorTarget.boardId);
+  if(!b) return;
+  b.check = !b.check;
+  sync.send("check", {id:b.id, on:b.check});
+  document.getElementById("actingCheck").classList.toggle("checked", b.check);
+  drawTiles();
+  refocusEditor();
+});
+document.getElementById("actingBack").addEventListener("click", () => {
+  editorTarget = {mode:"idle"};
+  document.getElementById("actingBar").hidden = true;
+  document.getElementById("workPanel").hidden = true;
+  showScreen("teacher");
+  drawTiles();
+});
+
+/* ---- pictures: PNG straight in, PDF rasterised page by page ------------ */
+function shrinkCanvas(c, max){
+  const scale = Math.min(1, max / c.width);
+  if(scale === 1) return c.toDataURL("image/jpeg", 0.82);
+  const d = document.createElement("canvas");
+  d.width = Math.round(c.width * scale);
+  d.height = Math.round(c.height * scale);
+  const g = d.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, d.width, d.height);
+  g.drawImage(c, 0, 0, d.width, d.height);
+  return d.toDataURL("image/jpeg", 0.82);
+}
+function imageToData(img, max){
+  const c = document.createElement("canvas");
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(img, 0, 0);
+  return shrinkCanvas(c, max || 1500);
+}
+/* pdf.js is fetched only when a PDF is actually chosen */
+function loadPdfJs(cb){
+  if(window.pdfjsLib) return cb(true);
+  const s = document.createElement("script");
+  s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+  s.onload = () => {
+    if(window.pdfjsLib){
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+    cb(!!window.pdfjsLib);
+  };
+  s.onerror = () => cb(false);
+  document.head.appendChild(s);
+}
+const MAX_PDF_PAGES = 4;
+function fileToImages(file, cb){
+  if(file.type === "application/pdf"){
+    loadPdfJs(ok => {
+      if(!ok) return cb(null, "Could not load the PDF reader — check the connection, or attach a PNG.");
+      file.arrayBuffer().then(buf => window.pdfjsLib.getDocument({data:buf}).promise).then(async pdf => {
+        const out = [];
+        const n = Math.min(pdf.numPages, MAX_PDF_PAGES);
+        for(let i = 1; i <= n; i++){
+          const page = await pdf.getPage(i);
+          const vp = page.getViewport({scale:2});
+          const c = document.createElement("canvas");
+          c.width = vp.width; c.height = vp.height;
+          const g = c.getContext("2d");
+          g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+          await page.render({canvasContext:g, viewport:vp}).promise;
+          out.push(shrinkCanvas(c, 1500));
+        }
+        cb(out, pdf.numPages > n ? "Showing the first " + n + " pages." : "");
+      }).catch(() => cb(null, "That PDF could not be read."));
+    });
+    return;
+  }
+  if(!/^image\//.test(file.type)) return cb(null, "Attach a PNG, JPG or PDF.");
+  const fr = new FileReader();
+  fr.onload = () => {
+    const img = new Image();
+    img.onload = () => cb([imageToData(img)]);
+    img.onerror = () => cb(null, "That image could not be read.");
+    img.src = fr.result;
+  };
+  fr.onerror = () => cb(null, "That file could not be read.");
+  fr.readAsDataURL(file);
+}
+
+/* ---- the countdown ----------------------------------------------------- */
+let timerEnd = 0, timerTick = null;
+/* When the clock runs out a student can add nothing more, but everything they
+   have written stays on screen until the teacher closes the board. */
+let locked = false;
+function isLocked(){ return locked; }
+function setLocked(on){
+  if(locked === on) return;
+  locked = on;
+  document.getElementById("lockBar").hidden = !on;
+  boardEl.classList.toggle("locked", on);
+  paletteEl.classList.toggle("locked", on);
+  if(!on) refocusEditor();
+}
+function fmt(ms){
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+}
+function paintClock(){
+  const left = timerEnd - Date.now();
+  const done = left <= 0;
+  [document.getElementById("probClock"), document.getElementById("tClock")].forEach(el => {
+    if(!el) return;
+    if(!timerEnd){ el.hidden = true; return; }
+    el.hidden = false;
+    el.textContent = done ? "Time's up" : fmt(left);
+    el.classList.toggle("low", !done && left < 60000);
+    el.classList.toggle("done", done);
+  });
+  if(role === "student"){
+    showStrip();
+    if(done && timerEnd) setLocked(true);
+  }
+  if(done){ clearInterval(timerTick); timerTick = null; }
+}
+function startTimer(seconds){
+  clearInterval(timerTick); timerTick = null;
+  setLocked(false);
+  if(!seconds){ timerEnd = 0; paintClock(); return; }
+  /* each client counts down from when it hears about it, so nothing depends on
+     the clocks agreeing — over a network that matters more than it does here */
+  timerEnd = Date.now() + seconds * 1000;
+  paintClock();
+  timerTick = setInterval(paintClock, 500);
+}
+
+/* ---- the problem, as students see it ----------------------------------- */
+let problemImages = [], problemLines = [];
+let myFeedback = [], myCheck = false;
+function showStrip(){
+  const strip = document.getElementById("probStrip");
+  const imgs = document.getElementById("probImgs");
+  const has = problemImages.length > 0 || problemLines.length > 0;
+  strip.hidden = !(has || timerEnd);
+  if(strip.hidden) return;
+  if(imgs.childElementCount !== problemImages.length){
+    imgs.textContent = "";
+    problemImages.forEach(src => {
+      const im = document.createElement("img");
+      im.src = src; im.alt = "the problem";
+      imgs.appendChild(im);
+    });
+  }
+  renderStatic(document.getElementById("probLines"), problemLines);
+  document.getElementById("probLines").hidden = !problemLines.length;
+  document.getElementById("probToggle").hidden = !has;
+}
+
+/* what the teacher has written back, kept apart from the student's own work */
+function showFeedback(){
+  const panel = document.getElementById("fbPanel");
+  const rows = myFeedback.filter(t => t.trim());
+  panel.hidden = !rows.length;
+  if(rows.length) renderStatic(document.getElementById("fbLines"), rows);
+}
+function showTick(){
+  document.getElementById("tickBadge").hidden = !myCheck;
+}
+document.getElementById("probToggle").addEventListener("click", e => {
+  const strip = document.getElementById("probStrip");
+  const off = strip.classList.toggle("collapsed");
+  e.currentTarget.textContent = off ? "Show" : "Hide";
+  refocusEditor();
+});
+
+/* ---- teacher: compose and push ---------------------------------------- */
+let pendingImages = [];
+function openComposer(){
+  editorTarget = {mode:"problem"};
+  pendingImages = [];
+  document.getElementById("probChip").hidden = true;
+  document.getElementById("probMsg").textContent = "";
+  document.getElementById("probMins").value = "";
+  document.getElementById("probFile").value = "";
+  document.getElementById("composerBar").hidden = false;
+  document.querySelector("#viewBoard .brand .tag").textContent = "New problem · " + myRoom;
+  loadLines([""]);
+  showScreen("board");
+}
+function closeComposer(){
+  document.getElementById("composerBar").hidden = true;
+  editorTarget = {mode:"idle"};
+  showScreen("teacher");
+  drawTiles();
+}
+document.getElementById("tPush").addEventListener("click", openComposer);
+document.getElementById("tClose").addEventListener("click", () => {
+  if(!sync) return;
+  sync.send("close", {});
+  startTimer(0);
+  boards.forEach(b => { b.lines = []; b.check = false; b.feedback = []; });
+  drawTiles();
+});
+document.getElementById("probCancel").addEventListener("click", closeComposer);
+
+document.getElementById("probFile").addEventListener("change", e => {
+  const file = e.target.files && e.target.files[0];
+  if(!file) return;
+  const msg = document.getElementById("probMsg");
+  msg.textContent = "Reading " + file.name + "…";
+  fileToImages(file, (imgs, note) => {
+    if(!imgs){ msg.textContent = note || "That file could not be read."; return; }
+    pendingImages = imgs;
+    msg.textContent = note || "";
+    const chip = document.getElementById("probChip");
+    document.getElementById("probChipName").textContent =
+      file.name + (imgs.length > 1 ? "  (" + imgs.length + " pages)" : "");
+    chip.hidden = false;
+  });
+});
+document.getElementById("probChipX").addEventListener("click", () => {
+  pendingImages = [];
+  document.getElementById("probChip").hidden = true;
+  document.getElementById("probFile").value = "";
+  document.getElementById("probMsg").textContent = "";
+});
+
+document.getElementById("probSend").addEventListener("click", () => {
+  const rows = currentLines().filter(t => t.trim());
+  const mins = parseFloat(document.getElementById("probMins").value);
+  const seconds = (mins > 0) ? Math.round(mins * 60) : 0;
+  if(!rows.length && !pendingImages.length && !seconds){
+    document.getElementById("probMsg").textContent = "Write something, attach a file, or set a time.";
+    return;
+  }
+  if(rows.length || pendingImages.length){
+    sync.send("problem", {lines:rows, images:pendingImages});
+  }
+  if(seconds) sync.send("timer", {seconds});
+  startTimer(seconds);                     // the sender does not hear its own message
+  closeComposer();
+});
+
+/* ---- landing ---------------------------------------------------------- */
+document.getElementById("joinStudent").addEventListener("click", () => {
+  const name = document.getElementById("nameInput").value.trim();
+  if(!name){ document.getElementById("nameInput").focus(); return; }
+  join("student", document.getElementById("roomInput").value, name);
+});
+document.getElementById("joinTeacher").addEventListener("click", () => {
+  join("teacher", document.getElementById("roomInput").value, "");
+});
+document.getElementById("tCopy").addEventListener("click", e => {
+  const f = document.getElementById("tLink");
+  f.select();
+  try{ document.execCommand("copy"); }catch(err){}
+  const t = e.currentTarget; const was = t.textContent;
+  t.textContent = "Copied"; setTimeout(() => t.textContent = was, 1200);
+});
+document.getElementById("leaveBtn").addEventListener("click", leave);
+document.getElementById("tLeave").addEventListener("click", leave);
+
+/* rejoin from the address bar, so a refresh keeps you where you were */
+(function fromHash(){
+  const h = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const r = h.get("role");
+  if(r === "student" && h.get("name")) return join("student", h.get("room"), h.get("name"));
+  if(r === "teacher") return join("teacher", h.get("room"), "");
+  if(r === "student"){
+    // arrived on the student link: the teacher option is not offered.
+    // A UI guard, not a lock — real enforcement needs sign-in.
+    document.getElementById("joinTeacher").hidden = true;
+    const room = document.getElementById("roomInput");
+    room.value = (h.get("room") || "").toUpperCase();
+    room.readOnly = true;
+    document.querySelector(".joinnote").textContent =
+      "You are joining " + room.value + " as a student.";
+  }
+  showScreen("landing");
+})();
+
+window.__chalkboard = {
+  join, leave, currentLines, loadLines,
+  boards: () => [...boards.values()],
+  target: () => editorTarget.mode
+};
+
+/* test hook */
+window.__chalkline = {
+  tex: () => lines.map(l => l.kind==="math" ? texList(l.root) : "%"+l.text).join("\n"),
+  type: s => { for(const c of s) typeChar(c); render(); },
+  key: k => hidden.dispatchEvent(new KeyboardEvent("keydown", {key:k, bubbles:true, cancelable:true})),
+  state: () => ({lines:lines.length, focus:focusLine, at:cur.i, len:cur.list.length}),
+  // round-trip hooks for the test suite
+  parse: s => { const r = parseTex(s); return {tex: texList(r.list), warnings: r.warnings}; },
+  load: s => { const r = parseTex(s); const ln = curLine(); ln.root.length = 0;
+               ln.root.push(...r.list); relink(); cur = {list:ln.root, i:ln.root.length};
+               render(); return r.warnings; }
+};
+</script>
+
+</body>
+</html>
