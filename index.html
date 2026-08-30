@@ -6,6 +6,23 @@
 <title>Chalkline Equation Board</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:ital,wght@0,400;0,500;1,400;1,500&display=swap">
+<!-- =====================================================================
+     FIREBASE SETTINGS  —  the only part of this file you ever need to edit.
+
+     Paste the five values from your Firebase project between the quotes.
+     Leave them empty and the board works between windows on one computer.
+     These values are public by design: they name the project, they do not
+     grant access. Access is decided by the database rules.
+     ===================================================================== -->
+<script>
+window.CHALKLINE_FIREBASE = {
+  apiKey:      "",
+  authDomain:  "",
+  databaseURL: "",
+  projectId:   "",
+  appId:       ""
+};
+</script>
 <style>
 :root{
   --paper:#E9EDEF; --surface:#FCFDFD; --surface-2:#F1F5F6;
@@ -2472,20 +2489,11 @@ document.addEventListener("mousedown", e => {
 
 /* =========================================================================
    FIREBASE
-   Paste the config from your Firebase project below and the board switches
-   from same-machine sync to real devices. Leave apiKey empty and it keeps
-   using LocalSync, which works between windows on one computer.
-
-   These values are public by design — they identify the project, they do not
-   grant access. Access is controlled by the database rules (firebase-rules.json).
+   The settings live in the block at the very top of this file, so they can be
+   edited without wading through the stylesheet. Filled in → real devices;
+   left empty → LocalSync, which works between windows on one computer.
    ========================================================================= */
-const FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  databaseURL: "",
-  projectId: "",
-  appId: ""
-};
+const FIREBASE_CONFIG = window.CHALKLINE_FIREBASE || {apiKey:""};
 const FB_SDK = "https://www.gstatic.com/firebasejs/12.18.0/";
 
 /* ---- sync interface --------------------------------------------------- */
