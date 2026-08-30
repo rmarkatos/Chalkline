@@ -2552,8 +2552,15 @@ function FirebaseSync(room){
       else d.set(d.ref(db, R + "/timer"), {endsAt: Date.now() + offset + p.seconds * 1000});
     }
     else if(type === "close"){
-      // one write clears the room and pulses everyone
-      d.set(d.ref(db, R), {closed: Date.now() + offset});
+      // Written child by child, never to the room root. The rules deliberately
+      // do not allow writing the room node itself — that is what stops one
+      // student from wiping another student's board. Each student clears their
+      // own board when they receive the pulse.
+      d.set(d.ref(db, R + "/closed"), Date.now() + offset);
+      d.remove(d.ref(db, R + "/problem"));
+      d.remove(d.ref(db, R + "/timer"));
+      d.remove(d.ref(db, R + "/feedback"));
+      d.remove(d.ref(db, R + "/checks"));
     }
   }
 
