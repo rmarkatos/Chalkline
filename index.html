@@ -357,6 +357,15 @@ button{font:inherit;color:inherit}
 .joinbtns{display:flex; flex-direction:column; gap:9px; margin-top:20px}
 .btn.big{padding:11px 14px; font-size:14px; border-radius:9px}
 .joinnote{font-size:12px; color:var(--muted); line-height:1.5; margin:18px 0 0}
+.signin{margin-top:18px; padding-top:18px; border-top:1px solid var(--line)}
+.signin.alone{margin-top:0; padding-top:0; border-top:0}
+.signwhy{font-size:12.5px; color:var(--muted); line-height:1.5; margin:0 0 14px}
+.signmsg{font-size:12.5px; color:var(--slot); min-height:1.2em; margin:0}
+.whoami{font-size:12px; color:var(--muted); margin:14px 0 0}
+.whoami button{
+  background:none; border:0; padding:0; margin-left:6px; cursor:pointer;
+  color:var(--accent-ink); font:inherit; text-decoration:underline;
+}
 
 /* teacher grid */
 .gridwrap{padding:20px}
@@ -457,6 +466,14 @@ button{font:inherit;color:inherit}
   flex:none;
 }
 .problemstrip.collapsed .probimgs{display:none}
+.probitem{display:flex; gap:10px; align-items:flex-start; padding:8px 0}
+.probitem + .probitem{border-top:1px dashed var(--line)}
+.probinner{flex:1; min-width:0}
+.probnum{
+  flex:none; width:20px; height:20px; margin-top:2px; border-radius:50%;
+  border:1px solid var(--line); color:var(--muted); background:var(--bg);
+  font-size:11px; display:flex; align-items:center; justify-content:center;
+}
 
 .lockbar{
   display:flex; align-items:center; gap:10px; flex-wrap:wrap;
@@ -552,14 +569,30 @@ button{font:inherit;color:inherit}
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
-    <label class="fld"><span>Your name</span>
+    <label class="fld" id="nameFld"><span>Your name</span>
       <input id="nameInput" placeholder="e.g. Priya" spellcheck="false" autocomplete="off"></label>
 
     <div class="joinbtns">
       <button class="btn big" id="joinStudent">Join as a student</button>
       <button class="btn big on" id="joinTeacher">Open the teacher view</button>
     </div>
-    <p class="joinnote">
+
+    <div class="signin" id="signinBox" hidden>
+      <p class="signwhy">The teacher view is for you, not the class. Sign in once
+        and this browser will remember you.</p>
+      <label class="fld"><span>Teacher email</span>
+        <input id="tEmail" type="email" autocomplete="username" spellcheck="false"></label>
+      <label class="fld"><span>Password</span>
+        <input id="tPass" type="password" autocomplete="current-password"></label>
+      <p class="signmsg" id="signMsg"></p>
+      <div class="joinbtns">
+        <button class="btn big on" id="tSignIn">Sign in</button>
+        <button class="btn big" id="tSignCancel">Cancel</button>
+      </div>
+    </div>
+
+    <p class="whoami" id="whoAmI" hidden></p>
+    <p class="joinnote" id="joinNote">
       Everyone using the same class code shares a board set. Open the teacher view in
       one window and a student in another to try it.
     </p>
@@ -579,6 +612,7 @@ button{font:inherit;color:inherit}
       <button class="btn" id="tPush">Push a problem</button>
       <button class="btn" id="tClose">Close the board</button>
       <button class="btn" id="tLeave">Leave</button>
+      <button class="btn" id="tSignOut">Sign out</button>
     </div>
   </div>
   <div class="gridwrap">
@@ -623,6 +657,8 @@ button{font:inherit;color:inherit}
   <label class="mins">Minutes
     <input type="number" id="probMins" min="1" max="120" placeholder="none"></label>
   <span class="cmsg" id="probMsg"></span>
+  <span class="cmsg" id="probCount"></span>
+  <button class="btn" id="probClear" hidden>Clear all problems</button>
   <button class="btn" id="probCancel">Cancel</button>
   <button class="btn on" id="probSend">Send to the class</button>
 </div>
@@ -637,14 +673,11 @@ button{font:inherit;color:inherit}
   <div class="stage">
     <div class="problemstrip" id="probStrip" hidden>
     <div class="probhead">
-      <span class="plabel">The problem</span>
+      <span class="plabel" id="plabel">The problem</span>
       <span class="clock" id="probClock" hidden></span>
       <button class="btn" id="probToggle">Hide</button>
     </div>
-    <div class="probbody" id="probBody">
-      <div class="probimgs" id="probImgs"></div>
-      <div class="problines" id="probLines"></div>
-    </div>
+    <div class="probbody" id="probBody"></div>
   </div>
 
   <div class="workpanel" id="workPanel" hidden>
@@ -707,6 +740,16 @@ button{font:inherit;color:inherit}
 let sync = null, role = null, myRoom = "", myName = "", myId = "";
 let editorTarget = {mode:"idle"};
 let pubTimer = null, heartbeat = null, agoTimer = null;
+/* Opening a panel loads content into the editor, which renders, which would
+   otherwise publish — writing a blank board over feedback that already exists.
+   One render after a load is skipped for that reason. Declared here, with the
+   rest of the shared state, because render() runs long before that section. */
+let holdPublish = false;
+/* Every problem the teacher has pushed this session, oldest first. Each is
+   {lines:[latex], images:[dataURL]}. They stack up so a lesson can put two or
+   three questions on screen at once; "Close the board" is what clears them. */
+let problemItems = [];
+let stripDrawn = null;
 /* =========================================================================
    1. MODEL
    A math expression is a LIST of NODES. A node with sub-expressions holds
@@ -1143,7 +1186,10 @@ function paintFocus(){
 
 /* stretch ( ) [ ] | { } to the height of their contents */
 function fitDelims(root){
-  (root || boardEl).querySelectorAll(".delim, .mat").forEach(d => {
+  // Called from a resize listener too, which hands us an Event, not an element.
+  const host = (root && root.querySelectorAll) ? root : boardEl;
+  if(!host) return;
+  host.querySelectorAll(".delim, .mat").forEach(d => {
     const body = d.querySelector(":scope > .dbody, :scope > .matgrid");
     if(!body) return;
     const fs = parseFloat(getComputedStyle(d).fontSize) || 27;
@@ -2454,7 +2500,7 @@ function toggleTheme(){
 document.getElementById("themeBtn").addEventListener("click", () => { toggleTheme(); refocusEditor(); });
 document.getElementById("tTheme").addEventListener("click", toggleTheme);
 
-window.addEventListener("resize", fitDelims);
+window.addEventListener("resize", () => fitDelims());
 
 /* =========================================================================
    11. START
@@ -2530,6 +2576,17 @@ function asLines(v){
   }
   return [];
 }
+/* The database holds every pushed problem under one node. Older boards wrote a
+   single {lines, images} there; both shapes read back as a list. */
+function asProblems(v){
+  if(!v || typeof v !== "object") return [];
+  let raw = v.items;
+  if(raw == null && (v.lines || v.images)) raw = [{lines:v.lines, images:v.images}];
+  if(raw == null) return [];
+  const arr = Array.isArray(raw) ? raw
+            : Object.keys(raw).sort((a, b) => a - b).map(k => raw[k]);
+  return arr.filter(Boolean).map(it => ({lines:asLines(it.lines), images:asLines(it.images)}));
+}
 
 function LocalSync(room){
   const ch = new BroadcastChannel("chalkline:" + room);
@@ -2585,7 +2642,74 @@ document.addEventListener("click", e => {
   }
 });
 
-function FirebaseSync(room){
+/* -------------------------------------------------------------------------
+   WHO IS THE TEACHER
+   The page cannot decide this: a student can edit the address bar, or call
+   these functions straight from the browser's console. Only the database can
+   enforce it, and the only thing the database knows about a visitor is who
+   they signed in as. So the teacher signs in with an email and password, and
+   the rules check that address. Students stay anonymous — no account, no
+   password, nothing stored about them.
+   ------------------------------------------------------------------------- */
+let fbReady = null;
+function ensureFirebase(){
+  if(fbReady) return fbReady;
+  fbReady = (async () => {
+    const [appMod, dbMod, authMod] = await Promise.all([
+      import(FB_SDK + "firebase-app.js"),
+      import(FB_SDK + "firebase-database.js"),
+      import(FB_SDK + "firebase-auth.js")
+    ]);
+    const app = appMod.initializeApp(FIREBASE_CONFIG);
+    return {D:dbMod, U:authMod, app,
+            auth: authMod.getAuth(app), db: dbMod.getDatabase(app)};
+  })();
+  return fbReady;
+}
+
+let authUser = null;                 // the signed-in Firebase user, once known
+function signedInTeacher(){ return !!(authUser && authUser.email); }
+
+/* Firebase keeps a signed-in teacher in this browser, so this normally
+   resolves to "already signed in" and the password box never appears. */
+function watchAuth(){
+  if(!FIREBASE_CONFIG.apiKey) return Promise.resolve();
+  return ensureFirebase().then(F => new Promise(res => {
+    let first = true;
+    F.U.onAuthStateChanged(F.auth, u => {
+      authUser = u || null;
+      paintSignIn();
+      if(first){ first = false; res(); }
+    });
+  })).catch(err => { reportError("signing in", err); });
+}
+
+async function teacherSignIn(email, password){
+  const F = await ensureFirebase();
+  const cred = await F.U.signInWithEmailAndPassword(F.auth, email, password);
+  authUser = cred.user;
+  paintSignIn();
+  return cred.user;
+}
+async function signOutTeacher(){
+  if(!FIREBASE_CONFIG.apiKey) return;
+  const F = await ensureFirebase();
+  await F.U.signOut(F.auth);
+  authUser = null;
+  paintSignIn();
+}
+/* whichever account this device should be using for the role it is taking */
+async function accountFor(role){
+  const F = await ensureFirebase();
+  if(role === "teacher"){
+    if(!signedInTeacher()) throw new Error("Sign in as a teacher first.");
+    return F.auth.currentUser;
+  }
+  if(F.auth.currentUser) return F.auth.currentUser;
+  return (await F.U.signInAnonymously(F.auth)).user;
+}
+
+function FirebaseSync(room, role){
   const handlers = {};
   const queue = [];
   let d = null, db = null, uid = null, offset = 0, dead = false;
@@ -2619,7 +2743,7 @@ function FirebaseSync(room){
     else if(type === "feedback") W("feedback", d.set(d.ref(db, R + "/feedback/" + p.id), {lines:p.lines || []}));
     else if(type === "check")    W("the checkmark", d.set(d.ref(db, R + "/checks/" + p.id), !!p.on));
     else if(type === "problem")  W("the problem", d.set(d.ref(db, R + "/problem"),
-                                       {lines:p.lines || [], images:p.images || [], at:d.serverTimestamp()}));
+                                       {items:p.items || [], at:d.serverTimestamp()}));
     else if(type === "timer"){
       if(!p.seconds) W("the timer", d.remove(d.ref(db, R + "/timer")));
       else W("the timer", d.set(d.ref(db, R + "/timer"), {endsAt: Date.now() + offset + p.seconds * 1000}));
@@ -2639,36 +2763,47 @@ function FirebaseSync(room){
 
   (async () => {
     setConn("connecting");
-    const [appMod, dbMod, authMod] = await Promise.all([
-      import(FB_SDK + "firebase-app.js"),
-      import(FB_SDK + "firebase-database.js"),
-      import(FB_SDK + "firebase-auth.js")
-    ]);
-    const app  = appMod.initializeApp(FIREBASE_CONFIG);
-    const auth = authMod.getAuth(app);
-    const cred = await authMod.signInAnonymously(auth);
-    uid = cred.user.uid;
-    db  = dbMod.getDatabase(app);
-    d   = dbMod;
+    const F = await ensureFirebase();
+    const user = await accountFor(role);
+    uid = user.uid;
+    db  = F.db;
+    d   = F.D;
 
     // every device counts the clock down from the same instant
     d.onValue(d.ref(db, ".info/serverTimeOffset"), s => { offset = s.val() || 0; });
     d.onValue(d.ref(db, ".info/connected"), s => setConn(s.val() ? "online" : "offline"));
 
-    const boards = d.ref(db, R + "/boards");
     const E = what => err => reportError("reading " + what, err);
-    d.onChildAdded(boards,   s => fire("board", Object.assign({id:s.key}, s.val())), E("the wall"));
-    d.onChildChanged(boards, s => fire("board", Object.assign({id:s.key}, s.val())), E("the wall"));
-    d.onChildRemoved(boards, s => fire("gone", {id:s.key}), E("the wall"));
 
-    d.onValue(d.ref(db, R + "/feedback/" + uid),
-      s => fire("feedback", {id:uid, lines:(s.val() || {}).lines || []}));
-    d.onValue(d.ref(db, R + "/checks/" + uid),
-      s => fire("check", {id:uid, on: !!s.val()}));
-    d.onValue(d.ref(db, R + "/problem"), s => {
-      const v = s.val();
-      fire("problem", {lines:(v && v.lines) || [], images:(v && v.images) || []});
-    }, E("the problem"));
+    // What a device listens to now follows what the rules will let it read.
+    // Only the teacher may read the wall, or anyone's feedback but their own.
+    if(role === "teacher"){
+      const boards = d.ref(db, R + "/boards");
+      d.onChildAdded(boards,   s => fire("board", Object.assign({id:s.key}, s.val())), E("the wall"));
+      d.onChildChanged(boards, s => fire("board", Object.assign({id:s.key}, s.val())), E("the wall"));
+      d.onChildRemoved(boards, s => fire("gone", {id:s.key}), E("the wall"));
+
+      // the whole node, so feedback written before this page was opened is
+      // there when a panel is reopened, instead of a blank slate
+      const fbRef = d.ref(db, R + "/feedback");
+      const fbMsg = s => fire("feedback", {id:s.key, lines:(s.val() || {}).lines || []});
+      d.onChildAdded(fbRef, fbMsg, E("feedback"));
+      d.onChildChanged(fbRef, fbMsg, E("feedback"));
+      d.onChildRemoved(fbRef, s => fire("feedback", {id:s.key, lines:[]}), E("feedback"));
+
+      const ckRef = d.ref(db, R + "/checks");
+      const ckMsg = s => fire("check", {id:s.key, on: !!s.val()});
+      d.onChildAdded(ckRef, ckMsg, E("checks"));
+      d.onChildChanged(ckRef, ckMsg, E("checks"));
+      d.onChildRemoved(ckRef, s => fire("check", {id:s.key, on:false}), E("checks"));
+    } else {
+      d.onValue(d.ref(db, R + "/feedback/" + uid),
+        s => fire("feedback", {id:uid, lines:(s.val() || {}).lines || []}), E("your feedback"));
+      d.onValue(d.ref(db, R + "/checks/" + uid),
+        s => fire("check", {id:uid, on: !!s.val()}), E("your checkmark"));
+    }
+    d.onValue(d.ref(db, R + "/problem"), s => fire("problem", {items:asProblems(s.val())}),
+              E("the problem"));
     d.onValue(d.ref(db, R + "/timer"), s => {
       const v = s.val();
       if(!v || !v.endsAt) return fire("timer", {seconds:0});
@@ -2698,8 +2833,8 @@ function FirebaseSync(room){
   };
 }
 
-function makeSync(room){
-  return FIREBASE_CONFIG.apiKey ? FirebaseSync(room) : LocalSync(room);
+function makeSync(room, role){
+  return FIREBASE_CONFIG.apiKey ? FirebaseSync(room, role) : LocalSync(room);
 }
 
 /* a visible answer to "is this actually connected?" */
@@ -2725,6 +2860,8 @@ function setConn(state, detail){
 /* ---- app state -------------------------------------------------------- */
 /* state declared at the top of the file; modes: idle | student | teacherEdit | problem */
 const boards = new Map();              // id -> {id, name, lines, at}
+const fbMap  = new Map();              // id -> feedback lines, straight from the database
+const ckMap  = new Map();              // id -> checkmark
 
 const screens = {
   landing: document.getElementById("viewLanding"),
@@ -2765,6 +2902,7 @@ function flashBoard(){
 
 /* ---- publishing ------------------------------------------------------- */
 function schedulePublish(){
+  if(holdPublish){ holdPublish = false; return; }
   if(!sync) return;
   clearTimeout(pubTimer);
   pubTimer = setTimeout(publishNow, 180);
@@ -2783,7 +2921,7 @@ function join(asRole, room, name){
   role = asRole;
   myRoom = (room || "ALG2").trim().toUpperCase();
   myName = (name || "").trim();
-  sync = makeSync(myRoom);
+  sync = makeSync(myRoom, asRole);
   location.hash = "room=" + encodeURIComponent(myRoom) +
                   "&role=" + asRole +
                   (asRole === "student" ? "&name=" + encodeURIComponent(myName) : "");
@@ -2797,9 +2935,8 @@ function join(asRole, room, name){
     sync.on("hello", publishNow);
 
     sync.on("problem", m => {
-      // the problem is a prompt to read, not something typed into their work
-      problemImages = asLines(m.images);
-      problemLines  = asLines(m.lines);
+      // problems are prompts to read, not something typed into their work
+      problemItems = m.items;
       document.getElementById("probStrip").classList.remove("collapsed");
       document.getElementById("probToggle").textContent = "Hide";
       showStrip();
@@ -2817,7 +2954,7 @@ function join(asRole, room, name){
     sync.on("timer", m => startTimer(m.seconds));
     sync.on("close", () => {
       startTimer(0);
-      problemImages = []; problemLines = []; myFeedback = []; myCheck = false;
+      problemItems = []; stripDrawn = null; myFeedback = []; myCheck = false;
       showStrip(); showFeedback(); showTick();
       loadLines([]);
       flashBoard();
@@ -2840,7 +2977,8 @@ function join(asRole, room, name){
       const prev = boards.get(m.id) || {};
       boards.set(m.id, {id:m.id, name:m.name || "student", lines:asLines(m.lines),
                         at:m.at || Date.now(),
-                        feedback:prev.feedback || [], check:!!prev.check});
+                        feedback: fbMap.get(m.id) || prev.feedback || [],
+                        check: ckMap.has(m.id) ? ckMap.get(m.id) : !!prev.check});
       if(editorTarget.mode === "feedback") refreshOpenBoard(m.id);
       else updateTile(m.id);
     });
@@ -2848,6 +2986,28 @@ function join(asRole, room, name){
       boards.delete(m.id);
       drawTiles();
     });
+    // feedback and checkmarks live in the database, so they outlast this page:
+    // reopening a student's panel shows what was written before, and leaving
+    // the wall no longer loses it
+    sync.on("feedback", m => {
+      const lines = asLines(m.lines);
+      fbMap.set(m.id, lines);
+      const b = boards.get(m.id);
+      if(b) b.feedback = lines;
+      // don't yank the editor out from under a teacher mid-sentence
+      if(editorTarget.mode === "feedback" && editorTarget.boardId === m.id) return;
+      updateTile(m.id);
+    });
+    sync.on("check", m => {
+      ckMap.set(m.id, !!m.on);
+      const b = boards.get(m.id);
+      if(b) b.check = !!m.on;
+      if(editorTarget.mode === "feedback" && editorTarget.boardId === m.id)
+        document.getElementById("actingCheck").classList.toggle("checked", !!m.on);
+      updateTile(m.id);
+    });
+    // the teacher tracks the problem list too, so a new push adds to it
+    sync.on("problem", m => { problemItems = m.items; refreshComposerCount(); });
     sync.ready(() => sync.send("hello", {}));
     agoTimer = setInterval(refreshAges, 5000);
   }
@@ -2855,11 +3015,11 @@ function join(asRole, room, name){
 function leave(){
   clearInterval(heartbeat); clearInterval(agoTimer); clearTimeout(pubTimer);
   if(sync) sync.close();
-  sync = null; role = null; boards.clear();
+  sync = null; role = null; boards.clear(); fbMap.clear(); ckMap.clear();
   clearTimeout(flushTimer); flushTimer = null; dirtyTiles.clear();
   tileEls.forEach(el => el.remove()); tileEls.clear();
   clearInterval(timerTick); timerTick = null; timerEnd = 0;
-  problemImages = []; showStrip();
+  problemItems = []; stripDrawn = null; showStrip();
   editorTarget = {mode:"idle"};
   location.hash = "";
   document.getElementById("leaveBtn").hidden = true;
@@ -3005,7 +3165,8 @@ function openBoard(id){
   renderStatic(document.getElementById("workLines"), b.lines);
   document.getElementById("actingCheck").classList.toggle("checked", !!b.check);
   document.querySelector("#viewBoard .brand .tag").textContent = b.name + " · " + myRoom;
-  loadLines(b.feedback || []);
+  holdPublish = true;
+  loadLines(fbMap.get(id) || b.feedback || []);
   showScreen("board");
 }
 /* their work keeps updating underneath while feedback is being written */
@@ -3149,25 +3310,59 @@ function startTimer(seconds){
 }
 
 /* ---- the problem, as students see it ----------------------------------- */
-let problemImages = [], problemLines = [];
 let myFeedback = [], myCheck = false;
+function stripKey(){
+  return problemItems.map(it => (it.lines || []).join("\u0001") + "\u0002" +
+                                (it.images || []).length).join("\u0003");
+}
 function showStrip(){
   const strip = document.getElementById("probStrip");
-  const imgs = document.getElementById("probImgs");
-  const has = problemImages.length > 0 || problemLines.length > 0;
+  const body  = document.getElementById("probBody");
+  const has = problemItems.length > 0;
   strip.hidden = !(has || timerEnd);
-  if(strip.hidden) return;
-  if(imgs.childElementCount !== problemImages.length){
-    imgs.textContent = "";
-    problemImages.forEach(src => {
-      const im = document.createElement("img");
-      im.src = src; im.alt = "the problem";
-      imgs.appendChild(im);
-    });
-  }
-  renderStatic(document.getElementById("probLines"), problemLines);
-  document.getElementById("probLines").hidden = !problemLines.length;
+  document.getElementById("plabel").textContent =
+    problemItems.length > 1 ? problemItems.length + " problems" : "The problem";
   document.getElementById("probToggle").hidden = !has;
+
+  // images are expensive to re-decode, so only redraw when something changed.
+  // This runs even while the strip is hidden, so clearing really clears.
+  const key = stripKey();
+  if(key === stripDrawn) return;
+  stripDrawn = key;
+  body.textContent = "";
+
+  problemItems.forEach((it, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "probitem";
+    if(problemItems.length > 1){
+      const n = document.createElement("div");
+      n.className = "probnum";
+      n.textContent = i + 1;
+      wrap.appendChild(n);
+    }
+    const inner = document.createElement("div");
+    inner.className = "probinner";
+    const imgs = asLines(it.images);
+    if(imgs.length){
+      const box = document.createElement("div");
+      box.className = "probimgs";
+      imgs.forEach(src => {
+        const im = document.createElement("img");
+        im.src = src; im.alt = "the problem";
+        box.appendChild(im);
+      });
+      inner.appendChild(box);
+    }
+    const rows = asLines(it.lines).filter(t => t.trim());
+    if(rows.length){
+      const lines = document.createElement("div");
+      lines.className = "problines";
+      renderStatic(lines, rows);
+      inner.appendChild(lines);
+    }
+    wrap.appendChild(inner);
+    body.appendChild(wrap);
+  });
 }
 
 /* what the teacher has written back, kept apart from the student's own work */
@@ -3189,6 +3384,15 @@ document.getElementById("probToggle").addEventListener("click", e => {
 
 /* ---- teacher: compose and push ---------------------------------------- */
 let pendingImages = [];
+function refreshComposerCount(){
+  const n = problemItems.length;
+  const el = document.getElementById("probCount");
+  const clr = document.getElementById("probClear");
+  if(!el) return;
+  el.textContent = n ? (n === 1 ? "1 problem is up — this adds a second"
+                                : n + " problems are up — this adds another") : "";
+  clr.hidden = !n;
+}
 function openComposer(){
   editorTarget = {mode:"problem"};
   pendingImages = [];
@@ -3198,6 +3402,8 @@ function openComposer(){
   document.getElementById("probFile").value = "";
   document.getElementById("composerBar").hidden = false;
   document.querySelector("#viewBoard .brand .tag").textContent = "New problem · " + myRoom;
+  refreshComposerCount();
+  holdPublish = true;
   loadLines([""]);
   showScreen("board");
 }
@@ -3212,8 +3418,16 @@ document.getElementById("tClose").addEventListener("click", () => {
   if(!sync) return;
   sync.send("close", {});
   startTimer(0);
+  problemItems = [];
+  fbMap.clear(); ckMap.clear();
   boards.forEach(b => { b.lines = []; b.check = false; b.feedback = []; });
   drawTiles();
+});
+document.getElementById("probClear").addEventListener("click", () => {
+  problemItems = [];
+  sync.send("problem", {items:[]});
+  refreshComposerCount();
+  refocusEditor();
 });
 document.getElementById("probCancel").addEventListener("click", closeComposer);
 
@@ -3248,7 +3462,10 @@ document.getElementById("probSend").addEventListener("click", () => {
     return;
   }
   if(rows.length || pendingImages.length){
-    sync.send("problem", {lines:rows, images:pendingImages});
+    // problems stack: the new one goes on the end of the list, so a lesson can
+    // leave two or three questions on screen at once
+    problemItems = problemItems.concat([{lines:rows, images:pendingImages}]);
+    sync.send("problem", {items:problemItems});
   }
   if(seconds) sync.send("timer", {seconds});
   startTimer(seconds);                     // the sender does not hear its own message
@@ -3261,8 +3478,92 @@ document.getElementById("joinStudent").addEventListener("click", () => {
   if(!name){ document.getElementById("nameInput").focus(); return; }
   join("student", document.getElementById("roomInput").value, name);
 });
-document.getElementById("joinTeacher").addEventListener("click", () => {
-  join("teacher", document.getElementById("roomInput").value, "");
+
+/* ---- the teacher signs in --------------------------------------------- */
+function paintSignIn(){
+  const who = document.getElementById("whoAmI");
+  const box = document.getElementById("signinBox");
+  if(!who) return;
+  const on = signedInTeacher();
+  who.hidden = !on;
+  if(on){
+    who.textContent = "Signed in as " + authUser.email;
+    const out = document.createElement("button");
+    out.type = "button"; out.textContent = "Sign out";
+    out.addEventListener("click", () => signOutTeacher());
+    who.appendChild(out);
+    if(box) box.hidden = true;
+  }
+  const so = document.getElementById("tSignOut");
+  if(so) so.hidden = !FIREBASE_CONFIG.apiKey;
+}
+/* the student half of this screen is not for whoever is signing in */
+function studentBits(on){
+  ["nameFld", "joinStudent", "joinNote"].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.hidden = !on;
+  });
+  const box = document.getElementById("signinBox");
+  if(box) box.classList.toggle("alone", !on);
+}
+function showSignIn(msg){
+  const box = document.getElementById("signinBox");
+  box.hidden = false;
+  document.getElementById("signMsg").textContent = msg || "";
+  document.getElementById("joinTeacher").hidden = true;
+  studentBits(false);
+  const e = document.getElementById("tEmail");
+  if(!e.value) e.focus(); else document.getElementById("tPass").focus();
+}
+function hideSignIn(){
+  document.getElementById("signinBox").hidden = true;
+  document.getElementById("signMsg").textContent = "";
+  document.getElementById("tPass").value = "";
+  document.getElementById("joinTeacher").hidden = false;
+  studentBits(true);
+}
+/* Firebase speaks in error codes; a person needs a sentence. */
+function signInProblem(err){
+  const code = (err && err.code) || "";
+  if(/invalid-credential|wrong-password|user-not-found|invalid-login/.test(code))
+    return "That email and password do not match an account.";
+  if(/invalid-email/.test(code))          return "That does not look like an email address.";
+  if(/too-many-requests/.test(code))      return "Too many tries. Wait a minute and try again.";
+  if(/network-request-failed/.test(code)) return "No connection to Firebase. Check the internet.";
+  if(/operation-not-allowed/.test(code))
+    return "Email sign-in is switched off in Firebase. Turn it on under Authentication → Sign-in method.";
+  return (err && err.message) || "Sign-in failed.";
+}
+function openTeacherView(){
+  const room = document.getElementById("roomInput").value;
+  if(!FIREBASE_CONFIG.apiKey) return join("teacher", room, "");  // local-only mode
+  if(signedInTeacher()) return join("teacher", room, "");
+  showSignIn("");
+}
+document.getElementById("joinTeacher").addEventListener("click", openTeacherView);
+document.getElementById("tSignCancel").addEventListener("click", hideSignIn);
+document.getElementById("tSignIn").addEventListener("click", async () => {
+  const btn = document.getElementById("tSignIn");
+  const email = document.getElementById("tEmail").value.trim();
+  const pass  = document.getElementById("tPass").value;
+  if(!email || !pass){ document.getElementById("signMsg").textContent =
+    "Both an email and a password, please."; return; }
+  btn.disabled = true;
+  document.getElementById("signMsg").textContent = "Signing in…";
+  try{
+    await teacherSignIn(email, pass);
+    hideSignIn();
+    join("teacher", document.getElementById("roomInput").value, "");
+  }catch(err){
+    document.getElementById("signMsg").textContent = signInProblem(err);
+  }finally{ btn.disabled = false; }
+});
+document.getElementById("tPass").addEventListener("keydown", e => {
+  if(e.key === "Enter") document.getElementById("tSignIn").click();
+});
+document.getElementById("tSignOut").addEventListener("click", async () => {
+  leave();
+  await signOutTeacher();
 });
 document.getElementById("tCopy").addEventListener("click", e => {
   const f = document.getElementById("tLink");
@@ -3274,28 +3575,41 @@ document.getElementById("tCopy").addEventListener("click", e => {
 document.getElementById("leaveBtn").addEventListener("click", leave);
 document.getElementById("tLeave").addEventListener("click", leave);
 
-/* rejoin from the address bar, so a refresh keeps you where you were */
-(function fromHash(){
+/* rejoin from the address bar, so a refresh keeps you where you were.
+   Note what this does NOT do: role=teacher no longer walks straight in. It
+   asks for a sign-in like any other route to the teacher view, and even if
+   someone got past this page the rules would hand them nothing. */
+(async function fromHash(){
+  showScreen("landing");
+  paintSignIn();                     // hides the sign-out button in local mode
+  await watchAuth();
   const h = new URLSearchParams(location.hash.replace(/^#/, ""));
   const r = h.get("role");
-  if(r === "student" && h.get("name")) return join("student", h.get("room"), h.get("name"));
-  if(r === "teacher") return join("teacher", h.get("room"), "");
+  const room = document.getElementById("roomInput");
+
   if(r === "student"){
-    // arrived on the student link: the teacher option is not offered.
-    // A UI guard, not a lock — real enforcement needs sign-in.
+    // arrived on the student link: the teacher option is put away, and the
+    // class code is fixed. Convenience, not security — the rules do that.
     document.getElementById("joinTeacher").hidden = true;
-    const room = document.getElementById("roomInput");
     room.value = (h.get("room") || "").toUpperCase();
     room.readOnly = true;
     document.querySelector(".joinnote").textContent =
       "You are joining " + room.value + " as a student.";
+    if(h.get("name")) return join("student", h.get("room"), h.get("name"));
+    return;
   }
-  showScreen("landing");
+  if(r === "teacher"){
+    room.value = (h.get("room") || "").toUpperCase();
+    if(!FIREBASE_CONFIG.apiKey || signedInTeacher())
+      return join("teacher", h.get("room"), "");
+    showSignIn("Sign in to open the teacher view.");
+  }
 })();
 
 window.__chalkboard = {
   join, leave, currentLines, loadLines,
   boards: () => [...boards.values()],
+  problems: () => problemItems,
   target: () => editorTarget.mode
 };
 
