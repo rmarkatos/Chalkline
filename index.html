@@ -87,7 +87,7 @@ button{font:inherit;color:inherit}
 .btn.on{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink)}
 
 /* ---------- layout ---------- */
-.wrap{display:grid; grid-template-columns:minmax(0,1fr) 312px; gap:0; min-height:calc(100vh - 53px)}
+.wrap{display:grid; grid-template-columns:312px minmax(0,1fr); gap:0; min-height:calc(100vh - 53px)}
 @media (max-width:900px){ .wrap{grid-template-columns:minmax(0,1fr)} }
 
 .stage{display:flex; flex-direction:column; min-width:0}
@@ -172,6 +172,12 @@ button{font:inherit;color:inherit}
 }
 /* the box the caret is sitting in grows to hold it, and anything half-typed */
 .ph.active{width:auto; min-width:.62em; padding:0 .06em; border-color:var(--slot)}
+/* the box a student is typing in stays visible until they leave it. An outline
+   rather than a border: it takes no room, so nothing moves as the caret does */
+.ml.filling{
+  outline:1px dashed var(--slot); outline-offset:1.5px;
+  border-radius:3px; background:var(--slot-soft);
+}
 .ph .cursor{height:.66em; margin:0; vertical-align:middle}
 .ph .pending{font-size:.42em; padding:.2em .28em; margin:0 .06em}
 
@@ -193,6 +199,11 @@ button{font:inherit;color:inherit}
 .blank{display:inline-block}
 .sup{display:inline-block; font-size:.72em; vertical-align:.66em; margin:0 .05em}
 .sub{display:inline-block; font-size:.72em; vertical-align:-.3em; margin:0 .05em}
+/* A fraction or radical in a script is centred on its own middle, so the plain
+   shift leaves half of it hanging beside the base. These lift it clear. */
+.sup.tall{vertical-align:1.34em}
+.sub.tall{vertical-align:-1.15em}
+.sup.tall>.ml>.frac, .sub.tall>.ml>.frac{margin:0 .1em}
 
 .sqrt{display:inline-flex; align-items:stretch; margin:0 .12em; vertical-align:middle}
 .sqrt>svg{width:.6em; flex:none; overflow:visible}
@@ -271,10 +282,29 @@ button{font:inherit;color:inherit}
 
 /* ---------- palette ---------- */
 .palette{
-  border-left:1px solid var(--line); background:var(--surface); padding:16px 16px 40px;
+  order:-1;                       /* the buttons sit to the left of the board */
+  border-right:1px solid var(--line); background:var(--surface); padding:16px 16px 40px;
   overflow-y:auto; max-height:calc(100vh - 53px);
 }
-@media (max-width:900px){ .palette{border-left:none; border-top:1px solid var(--line); max-height:none} }
+/* stacked on a narrow screen, the board comes first and the buttons below */
+@media (max-width:900px){
+  .palette{order:0; border-right:none; border-top:1px solid var(--line); max-height:none}
+}
+/* The bar of "evaluated at". Drawn as a rule rather than a glyph so its height
+   is exactly what we say, and the limits sit at its two ends. */
+.tallbar{font-size:1.55em; line-height:.72; vertical-align:-.16em; margin:0 .04em}
+.evbar{
+  display:inline-flex; align-items:stretch; vertical-align:middle;
+  height:2.05em; margin:0 .12em .02em .16em;
+}
+.evbar>.ebar{
+  width:.075em; min-width:1px; flex:none; align-self:stretch;
+  background:currentColor; border-radius:1px; margin-right:.16em;
+}
+.elims{display:flex; flex-direction:column; font-size:.62em; padding:.1em 0}
+.elims.two{justify-content:space-between}
+.elims.one{justify-content:flex-end}
+.elims>.elim{display:block}
 .pgroup{margin-bottom:16px}
 .pgroup>.lbl{margin-bottom:7px}
 .pgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:6px}
@@ -451,6 +481,62 @@ button{font:inherit;color:inherit}
 .cmsg{font-size:12px; color:var(--slot)}
 #probSend{margin-left:auto}
 
+
+/* ---------- graphing ---------- */
+/* the plot on the left, the features stacked in a column beside it */
+.gline{display:flex; gap:24px; align-items:flex-start; padding:12px 0 16px}
+.gcolplot{flex:1 1 480px; min-width:0; max-width:530px}
+.gcolside{flex:1 1 360px; min-width:300px; max-width:460px}
+.gfam{font-size:11px; text-transform:uppercase; letter-spacing:.1em;
+      color:var(--muted); margin-bottom:12px}
+.gfeat{display:flex; flex-direction:column; gap:9px; margin-bottom:14px}
+.gitem{display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center}
+.gitem b{font-weight:500; color:var(--muted); font-size:12px; line-height:1.25;
+         text-transform:uppercase; letter-spacing:.06em}
+.gitem .gpre{font-family:"STIX Two Text",Georgia,serif; font-style:italic; font-size:17px}
+.gshell{display:inline-flex; align-items:center; justify-content:flex-end; gap:8px}
+.gbox{
+  display:inline-flex; align-items:center; justify-content:center;
+  border:1px dashed var(--slot); background:var(--slot-soft); color:var(--ink);
+  border-radius:5px; padding:4px 12px; min-width:10.5em; min-height:2.1em;
+  font-family:"STIX Two Text",Georgia,serif; font-size:19px; cursor:text;
+}
+.gbox.here{border-style:solid; box-shadow:0 0 0 2px var(--accent-soft)}
+.gbox.none{color:var(--muted); font:500 12px "IBM Plex Sans",system-ui;
+           letter-spacing:.08em; text-transform:uppercase; cursor:default}
+.gnone{
+  flex:none; border:1px solid var(--line); background:var(--surface);
+  color:var(--muted); border-radius:5px; padding:3px 9px; cursor:pointer;
+  font:500 11px "IBM Plex Sans",system-ui; letter-spacing:.06em;
+  text-transform:uppercase;
+}
+.gnone:hover{border-color:var(--slot); color:var(--slot)}
+.gnone.on{border-color:var(--slot); background:var(--slot-soft); color:var(--slot)}
+.gnone.spacer{visibility:hidden; pointer-events:none}
+.gbar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+.gbtn{padding:5px 18px}
+.gbtn:disabled{opacity:.45; cursor:default}
+.gbox:focus{outline:2px solid var(--accent); outline-offset:1px; border-style:solid}
+.gbox.static{display:inline-block; width:auto; min-width:3em}
+.geq{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+.geq em{color:var(--muted); font-size:11px; text-transform:uppercase;
+        letter-spacing:.08em; font-style:normal}
+.gmsg{font-size:13px}
+.gmsg.need{color:var(--muted)}
+.gmsg.bad{color:var(--slot)}
+.gplot{
+  display:block; width:100%; max-width:560px; height:340px;
+  border:1px solid var(--line); border-radius:8px;
+  background:var(--surface); box-shadow:var(--shadow);
+}
+@media (max-width:900px){
+  .gline{flex-direction:column}
+  .gcolplot, .gcolside{max-width:none; width:100%}
+  .gplot{height:260px}
+}
+.tilebody .gplot{height:120px; max-width:100%; box-shadow:none}
+.tilebody .gfeat, .tilebody .geq, .tilebody .gmsg{display:none}
+.tilebody .gline{padding:4px 0}
 /* ---------- the problem, as students see it ---------- */
 .problemstrip{
   background:var(--surface); border-bottom:1px solid var(--line); padding:10px 20px 12px;
@@ -542,6 +628,7 @@ button{font:inherit;color:inherit}
   border:1px solid var(--line); color:var(--muted); background:var(--surface-2);
 }
 .conn.online{border-color:var(--accent); color:var(--accent-ink); background:var(--accent-soft)}
+.btn.danger{border-color:var(--slot); color:var(--slot); background:var(--slot-soft)}
 .conn.offline, .conn.failed{border-color:var(--slot); color:var(--slot); background:var(--slot-soft)}
 
 /* ---------- countdown ---------- */
@@ -565,7 +652,7 @@ button{font:inherit;color:inherit}
 <div class="screen" id="viewLanding">
   <div class="join">
     <h1>Chalkline</h1>
-    <p class="joinsub">Typing math made easy</p>
+    <p class="joinsub">Typing mathematics made user friendly</p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -632,12 +719,13 @@ button{font:inherit;color:inherit}
 <div class="topbar">
   <div class="brand">
     <h1>Chalkline</h1>
-    <span class="tag">Typing math made easy</span>
+    <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
     <button class="btn" id="addNote">Add text line</button>
+    <button class="btn" id="addGraph">Add a graph</button>
     <button class="btn" id="clearAll">Clear board</button>
     <button class="btn" id="importBtn">Paste LaTeX</button>
     <button class="btn" id="leaveBtn" hidden>Leave</button>
@@ -655,7 +743,9 @@ button{font:inherit;color:inherit}
   <span class="chip" id="probChip" hidden><span id="probChipName"></span>
     <button type="button" id="probChipX" title="Remove">&times;</button></span>
   <label class="mins">Minutes
-    <input type="number" id="probMins" min="1" max="120" placeholder="none"></label>
+    <input type="number" id="probMins" min="1" max="120" placeholder="keep"></label>
+  <span class="cmsg" id="probTimerNote"></span>
+  <button class="btn" id="probStopTimer" hidden>Stop the timer</button>
   <span class="cmsg" id="probMsg"></span>
   <span class="cmsg" id="probCount"></span>
   <button class="btn" id="probClear" hidden>Clear all problems</button>
@@ -704,7 +794,7 @@ button{font:inherit;color:inherit}
         <div><kbd>^</kbd><span>exponent</span></div>
         <div><kbd>_</kbd><span>subscript</span></div>
         <div><kbd>&larr;&nbsp;&rarr;</kbd><span>move left and right through your work</span></div>
-        <div><kbd>space</kbd><span>executes the LaTeX you just typed</span></div>
+        <div><kbd>space</kbd><span>a space &mdash; and it finishes a \\command you have typed</span></div>
       </div>
     </div>
   </div>
@@ -776,6 +866,29 @@ function sub(){ return {t:"sub", s:[L()]}; }
 function sqrt(){ return {t:"sqrt", s:[L()]}; }
 function root(){ return {t:"root", s:[L(),L()]}; }
 function delim(l,r){ return {t:"delim", l, r, s:[L()]}; }
+/* A typed bracket is just a character. It only becomes a grouping node when
+   its own partner arrives — so "[)" stays as typed, and a student can write a
+   lone "(" without the editor finishing the thought for them. */
+const OPEN_TEX  = {"(":"(", "[":"[", "{":"\\{"};
+const CLOSE_TEX = {")":")", "]":"]", "}":"\\}"};
+const MATCHING  = {")":"(", "]":"[", "}":"{"};
+function odel(c){ return sym(c, OPEN_TEX[c]); }
+function cdel(c){ return sym(c, CLOSE_TEX[c]); }
+/* the parser hands back a lone "(" as a plain character, so accept both */
+function openerOf(n){
+  if(!n) return "";
+  if((n.t === "sym" || n.t === "c") && (n.v === "(" || n.v === "[" || n.v === "{")) return n.v;
+  return "";
+}
+/* a tall bar, for "evaluated at" */
+function tallbar(){ const n = sym("|", "\\big|"); n.cls = "tallbar"; return n; }
+/* The bar of "evaluated at". Its limits belong to the ends of the bar, not to
+   the baseline of the line, so it cannot be a plain sub and sup — those sit at
+   script height and float in the middle of the bar. Slot order is navigation
+   order: the lower limit first, then the upper. */
+function evbar(both){
+  return {t:"evbar", both:!!both, wantBounds:true, s: both ? [L(), L()] : [L()]};
+}
 function mat(rows,cols,l,r){
   const n={t:"mat", rows, cols, l, r, s:[]};
   for(let i=0;i<rows*cols;i++) n.s.push(L());
@@ -799,7 +912,8 @@ function limop(){ return {t:"limop", s:[L()]}; }
 function blank(){ return {t:"blank", s:[L()]}; }
 /* explicit LaTeX spacing: \, \: \; \quad \qquad */
 function spc(w, tex){ return {t:"spc", w, tex}; }
-const SPC_W = {",":".17em", ":":".22em", ";":".28em", quad:"1em", qquad:"2em"};
+/* " " is LaTeX's own control space, "\ ", written by the space bar */
+const SPC_W = {" ":".32em", ",":".17em", ":":".22em", ";":".28em", quad:"1em", qquad:"2em"};
 
 /* parent links, rebuilt after every structural change */
 function link(list, parentNode, slotIndex){
@@ -878,6 +992,12 @@ function texNode(n){
       let s = n.tex;
       if(n.s[0].length || n.wantBounds) s += "_" + grp(n.s[0]);
       if(n.s[1].length || n.wantBounds) s += "^" + grp(n.s[1]);
+      return s;
+    }
+    case "evbar":{
+      let s = "\\big|";
+      if(n.s[0].length || n.wantBounds) s += "_" + grp(n.s[0]);
+      if(n.both) s += "^" + grp(n.s[1]);
       return s;
     }
     case "limop":
@@ -962,6 +1082,13 @@ function renderList(list, isFocusedField, ghost){
     el.appendChild(ph);
     return el;
   }
+  // The dotted box used to vanish the moment a student typed into it, which
+  // left nothing on screen saying "you are still in the exponent". It now
+  // stays, drawn as an outline so it costs no space and nothing shifts as the
+  // caret moves. Every slot behaves the same way — exponents, bounds, the
+  // inside of a radical, either half of a fraction.
+  if(isFocusedField && cur && cur.list === list && !sel && list.p) el.classList.add("filling");
+
   for(let k=0;k<=list.length;k++){
     if(isFocusedField && cur && cur.list === list && cur.i === k && !sel) caretAt(el);
     if(k < list.length){
@@ -978,6 +1105,12 @@ function renderList(list, isFocusedField, ghost){
     }
   }
   return el;
+}
+
+/* does this slot hold anything taller than a line of text? */
+const TALL = new Set(["frac", "sqrt", "root", "bigop", "limop", "evbar", "mat", "cases"]);
+function tallSlot(list){
+  return !!(list && list.some(n => n && TALL.has(n.t)));
 }
 
 function slotEl(list, cls, f, ghost){
@@ -998,7 +1131,7 @@ function renderNode(n, f){
     case "spc": e.className="spc"; e.style.width = n.w; break;
     case "rel":e.className="rel"; e.textContent=n.v; break;
     case "sym":
-      e.className = /[,;]/.test(n.v) ? "punct" : "sym";
+      e.className = (/[,;]/.test(n.v) ? "punct" : "sym") + (n.cls ? " " + n.cls : "");
       e.textContent = n.v;
       break;
     case "fn": e.className="fn"; e.textContent=n.v; break;
@@ -1011,8 +1144,15 @@ function renderNode(n, f){
       break;
     }
     case "blank": e.className="blank"; e.appendChild(slotEl(n.s[0],null,f)); break;
-    case "sup": e.className="sup"; e.appendChild(slotEl(n.s[0],null,f)); break;
-    case "sub": e.className="sub"; e.appendChild(slotEl(n.s[0],null,f)); break;
+    /* A script holding something with height — a fraction, a radical — needs
+       lifting further than a lone digit does, or it hangs down beside the base
+       instead of sitting up in the exponent. */
+    case "sup":
+      e.className = "sup" + (tallSlot(n.s[0]) ? " tall" : "");
+      e.appendChild(slotEl(n.s[0],null,f)); break;
+    case "sub":
+      e.className = "sub" + (tallSlot(n.s[0]) ? " tall" : "");
+      e.appendChild(slotEl(n.s[0],null,f)); break;
     case "sqrt":{
       e.className="sqrt";
       e.appendChild(radSvg());
@@ -1051,6 +1191,25 @@ function renderNode(n, f){
         const dr=document.createElement("span"); dr.className="dr"; dr.textContent=n.r;
         e.appendChild(dr);
       }
+      break;
+    }
+    case "evbar":{
+      e.className = "evbar";
+      const bar = document.createElement("span"); bar.className = "ebar";
+      const col = document.createElement("span");
+      col.className = "elims " + (n.both ? "two" : "one");
+      if(n.both){
+        const up = document.createElement("span"); up.className = "elim";
+        up.appendChild(slotEl(n.s[1], null, f));
+        const lo = document.createElement("span"); lo.className = "elim";
+        lo.appendChild(slotEl(n.s[0], null, f));
+        col.append(up, lo);
+      } else {
+        const lo = document.createElement("span"); lo.className = "elim";
+        lo.appendChild(slotEl(n.s[0], null, f));
+        col.appendChild(lo);
+      }
+      e.append(bar, col);
       break;
     }
     case "bigop":{
@@ -1129,6 +1288,7 @@ function radSvg(){
 }
 
 function render(){
+  syncField();
   boardEl.textContent = "";
   lines.forEach((ln, idx) => {
     const row = document.createElement("div");
@@ -1144,7 +1304,10 @@ function render(){
     const body = document.createElement("div");
     body.className = "linebody";
 
-    if(ln.kind === "math"){
+    if(ln.kind === "graph"){
+      row.__gid = ln.id;
+      body.appendChild(renderGraphBody(ln, true));
+    } else if(ln.kind === "math"){
       const f = document.createElement("span");
       f.className = "field";
       f.__field = idx;
@@ -1178,6 +1341,52 @@ function render(){
   fitDelims();
   updateTex();
   schedulePublish();
+}
+
+/* the caret is inside a graph's feature box: keep the stored value in step */
+function graphLineOf(id){ return lines.find(l => l.id === id); }
+function syncField(){
+  if(!gField) return;
+  const ln = graphLineOf(gField.id);
+  if(!ln){ gField = null; return; }
+  const before = ln.g.f[gField.k];
+  saveField(ln, gField.k);
+  if(ln.g.f[gField.k] !== before) ln.g.on = false;   // an edit needs re-graphing
+}
+
+/* Tab and Enter walk the boxes; every other key is ordinary typing, which
+   already works because "cur" is pointing at the field's own node list. */
+function fieldKey(e){
+  if(!gField) return false;
+  const ln = graphLineOf(gField.id);
+  if(!ln){ gField = null; return false; }
+  if(e.key === "Tab"){
+    e.preventDefault();
+    if(!stepField(ln, e.shiftKey ? -1 : 1)){
+      // off the end: down to the maths line under the graph
+      const at = lines.indexOf(ln);
+      const next = lines[at + (e.shiftKey ? -1 : 1)];
+      gField = null;
+      if(next && next.kind === "math"){ focusLine = lines.indexOf(next);
+                                        cur = {list:next.root, i:0}; }
+      render(); hidden.focus();
+    }
+    return true;
+  }
+  if(e.key === "Enter"){
+    e.preventDefault();
+    if(!stepField(ln, 1)){
+      const at = lines.indexOf(ln);
+      gField = null;
+      if(lines[at+1] && lines[at+1].kind === "math"){
+        focusLine = at + 1; cur = {list:lines[at+1].root, i:0};
+      }
+      render(); hidden.focus();
+    }
+    return true;
+  }
+  if(e.key === "Escape"){ e.preventDefault(); gField = null; render(); return true; }
+  return false;
 }
 
 function paintFocus(){
@@ -1391,6 +1600,9 @@ function grabTerm(list, i){
     depth++;
     if(depth > 200) break;
   }
+  // "sin x/x" wants the whole of "sin x" over x, so a space inside a term is
+  // kept — but a fraction should not begin with the space that preceded it
+  while(j < i && list[j].t === "spc") j++;
   return j;
 }
 
@@ -1585,8 +1797,9 @@ function typePending(k){
       if(SPC_W[k]) insert(spc(SPC_W[k], "\\" + k));
       return;
     }
-    // \{ and \} are literal braces
-    if(k === "{"){ pending = null; insertTemplate(delim("{","}"), true); return; }
+    // \{ and \} are literal braces, and pair up like any other bracket
+    if(k === "{"){ pending = null; insert(odel("{")); return; }
+    if(k === "}"){ pending = null; if(!closeDelim("}")) insert(cdel("}")); return; }
     // \$ is a literal dollar sign, not the mode switch
     if(k === "$"){ pending = null; insert(textMode ? tc("$") : sym("$","\\$")); return; }
   }
@@ -1616,6 +1829,9 @@ function typePending(k){
   // still inside an argument or a bound: every character belongs to the command
   if(pendingNeedsMore(pending)){ take(); return; }
 
+  // The one place the space bar does not put in a space: straight after a
+  // typed \command, where LaTeX itself spends the space ending the word. Let
+  // it through and "\pi r^2" becomes "\pi~r^{2}", which sets too wide.
   if(k === " "){ commitPending(); return; }
   if(k === "\\"){ commitPending(); pending = "\\"; return; }
 
@@ -1629,6 +1845,9 @@ function typePending(k){
   commitPending();
   typeChar(k);                       // the character that ended the command
 }
+
+/* the slots LaTeX closes by itself, where a space means "I am done here" */
+const SCRIPTY = new Set(["sup", "sub", "bigop", "limop", "evbar"]);
 
 function typeChar(k){
   if(pending !== null){ typePending(k); return; }
@@ -1680,20 +1899,29 @@ function typeChar(k){
     insertTemplate(k === "^" ? sup() : sub());
     return;
   }
-  // Braces are LaTeX grouping, not characters: "{" needs no box because the
-  // structure already made one, and "}" means "I am done with this box".
-  // A literal brace is written \{ … \}, exactly as in LaTeX.
-  if(k === "{") return;
-  if(k === "}"){ exitRight(cur.list); return; }
-  if(k === "(" || k === "["){ insertTemplate(delim(k, CLOSERS[k]), true); return; }
-  if(k === ")" || k === "]"){
-    // step out of the enclosing delimiter if we're in one
+  // An opener is typed as itself and left alone. Nothing is auto-closed.
+  if(k === "(" || k === "["){ insert(odel(k)); return; }
+  if(k === "{"){
+    // The one place "{" is not a brace: standing at the front of the empty box
+    // a command just made. That is how "x^{2}" and "\frac{1}{2}" get typed —
+    // the structure already made the group, so the brace is absorbed.
+    if(cur.i === 0 && cur.list.length === 0 && cur.list.p) return;
+    insert(odel(k)); return;
+  }
+  if(k === ")" || k === "]" || k === "}"){
+    // its own partner, waiting in this list, turns the pair into a group
+    if(closeDelim(k)) return;
+    // otherwise a closer still means "I am done with this box"
+    if(k === "}"){
+      if(cur.list.p && exitRight(cur.list)) return;
+      insert(cdel(k)); return;
+    }
     let list = cur.list;
     while(list && list.p){
       if(list.p.t === "delim"){ const n=list.p, outer=n.pl; cur={list:outer, i:outer.indexOf(n)+1}; return; }
       list = list.p.pl;
     }
-    insert(sym(k, k)); return;
+    insert(cdel(k)); return;
   }
   if(k === "|"){
     let list = cur.list;
@@ -1711,10 +1939,19 @@ function typeChar(k){
   if(k === "<" ){ insert(rel("<","<")); return; }
   if(k === ">" ){ insert(rel(">",">")); return; }
   if(k === "," || k === ";"){ insert(sym(k,k)); return; }
-  // Spaces are implicit in mathematics, so a space is free to mean "done with
-  // this box" — the same thing "}" means, and what it does in LaTeX itself.
-  // At the top level of a line there is no box to leave, so it does nothing.
-  if(k === " "){ if(cur.list.p) exitRight(cur.list); return; }
+  if(k === " "){
+    // A script or a bound closes itself in LaTeX — "x^2" needs no closing — so
+    // the box the caret sits in there is the editor's idea, not the student's.
+    // A space steps out of it, which is what typing "\int_0^1 3x^2" needs.
+    // Everywhere else, a space is a space.
+    const host = cur.list.p;
+    if(host && SCRIPTY.has(host.t) && cur.i === cur.list.length && exitRight(cur.list)) return;
+    // Written "~", LaTeX's unbreakable space, rather than "\ ": a line ending
+    // in a space would otherwise end in backslash-space, and anything that
+    // trims trailing whitespace would leave a lone backslash behind.
+    insert(spc(SPC_W[" "], "~"));
+    return;
+  }
   if(LETTERS.test(k)){ insert(ch(k)); tryWord(); return; }
   if(DIGITS.test(k)){ insert(ch(k)); return; }
   insert(sym(k,k));
@@ -1760,6 +1997,17 @@ function insertLineAfter(idx, ln){
   if(ln.kind === "math"){ cur = {list:ln.root, i:0}; sel=null; render(); hidden.focus(); }
   else { render(); const inp = boardEl.children[focusLine].querySelector("input"); if(inp) inp.focus(); }
 }
+function addGraphLine(){
+  const at = focusLine;
+  const gl = newGraphLine("log");
+  lines.splice(at + 1, 0, gl);
+  // always leave a maths line under the graph so the work can continue
+  if(!lines[at + 2] || lines[at + 2].kind !== "math")
+    lines.splice(at + 2, 0, newMathLine());
+  focusLine = at + 1;
+  render();
+  focusField(gl, FAMILIES[gl.g.fam].fields[0].k);   // straight into the first box
+}
 function removeLine(idx){
   if(lines.length === 1){ resetBoard(); render(); hidden.focus(); return; }
   lines.splice(idx,1);
@@ -1785,9 +2033,16 @@ function extendSel(dir){
 }
 
 hidden.addEventListener("keydown", e => {
-  const ln = curLine();
-  if(!ln || ln.kind !== "math") return;
   if(isLocked()){ e.preventDefault(); return; }
+  // inside a graph's feature box the caret is already pointing at that box's
+  // own node list, so every key works as usual; only Tab and Enter differ
+  if(gField){ if(fieldKey(e)) return; }
+  else {
+    const ln0 = curLine();
+    if(!ln0 || ln0.kind !== "math") return;
+  }
+  const ln = curLine();
+  const inField = !!gField;
   const k = e.key;
 
   // part-way through typing a raw LaTeX command
@@ -1816,9 +2071,15 @@ hidden.addEventListener("keydown", e => {
   if(k === "ArrowDown"){  e.preventDefault(); sel=null; moveVert(1); syncMode(); render(); return; }
   if(k === "Home"){ e.preventDefault(); cur={list:cur.list,i:0}; sel=null; syncMode(); render(); return; }
   if(k === "End"){  e.preventDefault(); cur={list:cur.list,i:cur.list.length}; sel=null; syncMode(); render(); return; }
-  if(k === "Tab"){  e.preventDefault(); tabNext(); syncMode(); render(); return; }
-  if(k === "Enter"){ e.preventDefault(); insertLineAfter(focusLine, newMathLine()); return; }
-  if(k === "Backspace"){ e.preventDefault(); backspace(); syncMode(); render(); return; }
+  if(k === "Tab"){  e.preventDefault(); if(!inField){ tabNext(); syncMode(); render(); } return; }
+  if(k === "Enter"){ e.preventDefault(); if(!inField) insertLineAfter(focusLine, newMathLine()); return; }
+  if(k === "Backspace"){
+    e.preventDefault();
+    // inside a feature box, backspace empties the box and stops there: it must
+    // never fall through to "this line is empty, delete the line"
+    if(inField && !sel && cur.i === 0){ render(); return; }
+    backspace(); syncMode(); render(); return;
+  }
   if(k === "Delete"){
     e.preventDefault();
     if(sel) deleteSelection();
@@ -1898,6 +2159,29 @@ function invTrig(name){
   exitRight(cur.list);
 }
 /* insert several nodes at once, leaving the cursor at a chosen offset */
+/* Look back for this closer's own partner. The nearest unmatched opener has to
+   be the matching one — that is what keeps "[ )" from being quietly rewritten
+   into something the student did not type. */
+function closeDelim(close){
+  const want = MATCHING[close];
+  const list = cur.list;
+  let at = -1;
+  for(let i = cur.i - 1; i >= 0; i--){
+    const o = openerOf(list[i]);
+    if(o){ if(o === want) at = i; break; }
+  }
+  if(at < 0) return false;
+  const inner = list.splice(at, cur.i - at);
+  inner.shift();                                  // drop the opener itself
+  const d = delim(want, close);
+  d.s[0].push(...inner);
+  list.splice(at, 0, d);
+  // an empty pair leaves the caret in the box; a filled one leaves it after
+  cur = inner.length ? {list, i: at + 1} : {list: d.s[0], i: 0};
+  relink();
+  return true;
+}
+
 function insertSeq(nodes, offset){
   if(sel) deleteSelection();
   cur.list.splice(cur.i, 0, ...nodes);
@@ -1916,26 +2200,26 @@ const PALETTE = [
     {id:"abs",  face:"\\left|x\\right|", tex:"\\left| x \\right|",
      act:() => insertTemplate(delim("|","|"), true)},
   ]],
-  ["Operators & symbols", 4, [
+  ["Operators", 4, [
+    {id:"plus",   face:"+",           tex:"+",           act:() => insert(op("+","+"))},
+    {id:"minus",  face:"-",           tex:"-",           act:() => insert(op("−","-"))},
+    {id:"cdot",   face:"\\cdot",      tex:"\\cdot",      act:() => insert(op("·","\\cdot"))},
+    {id:"div",    face:"\\div",       tex:"\\div",       act:() => insert(op("÷","\\div"))},
+
     {id:"le",     face:"\\le",        tex:"\\le",        act:() => insert(rel("≤","\\le"))},
     {id:"ge",     face:"\\ge",        tex:"\\ge",        act:() => insert(rel("≥","\\ge"))},
     {id:"ne",     face:"\\ne",        tex:"\\ne",        act:() => insert(rel("≠","\\ne"))},
     {id:"approx", face:"\\approx",    tex:"\\approx",    act:() => insert(rel("≈","\\approx"))},
-    {id:"pi",     face:"\\pi",        tex:"\\pi",        act:() => insert(sym("π","\\pi"))},
-    {id:"theta",  face:"\\theta",     tex:"\\theta",     act:() => insert(sym("θ","\\theta"))},
-    {id:"deg",    face:"^\\circ",     tex:"^\\circ",     act:() => insert(sym("°","^\\circ"))},
-    {id:"angle",  face:"\\angle",     tex:"\\angle",     act:() => insert(sym("∠","\\angle"))},
-    {id:"cdot",   face:"\\cdot",      tex:"\\cdot",      act:() => insert(op("·","\\cdot"))},
+
     {id:"pm",     face:"\\pm",        tex:"\\pm",        act:() => insert(op("±","\\pm"))},
-    {id:"cup",    face:"\\cup",       tex:"\\cup",       act:() => insert(op("∪","\\cup"))},
-    {id:"implies",face:"\\Rightarrow",tex:"\\Rightarrow",act:() => insert(rel("⇒","\\Rightarrow"))},
-    {id:"in",     face:"\\in",        tex:"\\in",        act:() => insert(rel("∈","\\in"))},
-    {id:"notin",  face:"\\notin",     tex:"\\notin",     act:() => insert(rel("∉","\\notin"))},
-    {id:"inf",    face:"\\infty",     tex:"\\infty",     act:() => insert(sym("∞","\\infty"))},
-    {id:"neginf", face:"-\\infty",    tex:"-\\infty",
-     act:() => { insert(op("−","-")); insert(sym("∞","\\infty")); }},
+    {id:"circ",   face:"\\circ",      tex:"\\circ",      sub:"composition",
+     act:() => insert(op("∘","\\circ"))},
+    {id:"implies",face:"\\Rightarrow",tex:"\\Rightarrow",sub:"implies",
+     act:() => insert(rel("⇒","\\Rightarrow"))},
+    {id:"vbar",   face:"|",           tex:"|",           sub:"vertical bar",
+     act:() => insert(sym("|","|"))},
   ]],
-  ["Number sets", 4, [
+  ["Number sets and symbols", 4, [
     {id:"naturals",  face:"\\mathbb{N}", tex:"\\mathbb{N}", sub:"naturals",
      act:() => insert(sym("ℕ","\\mathbb{N}"))},
     {id:"integers",  face:"\\mathbb{Z}", tex:"\\mathbb{Z}", sub:"integers",
@@ -1944,6 +2228,20 @@ const PALETTE = [
      act:() => insert(sym("ℚ","\\mathbb{Q}"))},
     {id:"reals",     face:"\\mathbb{R}", tex:"\\mathbb{R}", sub:"reals",
      act:() => insert(sym("ℝ","\\mathbb{R}"))},
+
+    {id:"in",     face:"\\in",        tex:"\\in",        act:() => insert(rel("∈","\\in"))},
+    {id:"notin",  face:"\\notin",     tex:"\\notin",     act:() => insert(rel("∉","\\notin"))},
+    {id:"cup",    face:"\\cup",       tex:"\\cup",       sub:"union",
+     act:() => insert(op("∪","\\cup"))},
+    {id:"cap",    face:"\\cap",       tex:"\\cap",       sub:"intersection",
+     act:() => insert(op("∩","\\cap"))},
+
+    {id:"pi",     face:"\\pi",        tex:"\\pi",        act:() => insert(sym("π","\\pi"))},
+    {id:"theta",  face:"\\theta",     tex:"\\theta",     act:() => insert(sym("θ","\\theta"))},
+    {id:"deg",    face:"^\\circ",     tex:"^\\circ",     sub:"degrees",
+     act:() => insert(sym("°","^\\circ"))},
+    {id:"Delta",  face:"\\Delta",     tex:"\\Delta",     sub:"change in",
+     act:() => insert(sym("Δ","\\Delta"))},
   ]],
   ["Calculus", 4, [
     {id:"ddx",  face:"\\frac{d}{dx}", tex:"\\frac{d}{dx}",
@@ -1958,6 +2256,10 @@ const PALETTE = [
      act:() => { const n = blank(), d = blank();
                  const f = fracOf([ch("d"), supOf("2"), n], [ch("d"), d]);
                  insert(f); cur = {list:n.s[0], i:0}; relink(); }},
+
+    {id:"inf",    face:"\\infty",     tex:"\\infty",     act:() => insert(sym("∞","\\infty"))},
+    {id:"to",     face:"\\to",        tex:"\\to",        sub:"approaches",
+     act:() => insert(rel("→","\\to"))},
     {id:"lim",  face:"\\lim_{}{}", tex:"\\lim_{x \\to a}", sub:"limit",
      act:() => { const l = limop(); l.wantBounds = true;
                  insertSeq([l, blank()], 2);
@@ -1965,11 +2267,18 @@ const PALETTE = [
     {id:"sum",  face:"\\sum_{}^{}", tex:"\\sum_{n=1}^{N}", sub:"sum",
      act:() => { const n = bigop("∑","\\sum","stack"); n.wantBounds = true;
                  insert(n); cur = {list:n.s[0], i:0}; relink(); }},
+
     {id:"intInd", face:"\\int", tex:"\\int", sub:"indefinite integral",
      act:() => insert(bigop("∫","\\int","side"))},
     {id:"intDef", face:"\\int_{a}^{b}", tex:"\\int_{a}^{b}", sub:"definite integral",
      act:() => { const n = bigop("∫","\\int","side"); n.wantBounds = true;
                  insert(n); cur = {list:n.s[0], i:0}; relink(); }},
+    {id:"evalAt", face:"\\big|_{}", tex:"\\big|_{a}", sub:"evaluated at",
+     act:() => { const n = evbar(false); insert(n);
+                 cur = {list:n.s[0], i:0}; relink(); }},
+    {id:"evalAB", face:"\\big|_{}^{}", tex:"\\big|_{a}^{b}", sub:"from a to b",
+     act:() => { const n = evbar(true); insert(n);
+                 cur = {list:n.s[0], i:0}; relink(); }},
   ]],
   ["Trigonometry", 3, [
     {id:"sin", face:"\\sin", tex:"\\sin", act:() => insert(fn("sin"))},
@@ -2081,11 +2390,11 @@ const TEX_SYMS = {
   lambda:["λ","\\lambda"], mu:["μ","\\mu"], infty:["∞","\\infty"], partial:["∂","\\partial"],
   prime:["′","'"], ldots:["…","\\ldots"], dots:["…","\\ldots"], angle:["∠","\\angle"],
   N:["ℕ","\\mathbb{N}"], Z:["ℤ","\\mathbb{Z}"], Q:["ℚ","\\mathbb{Q}"],
-  R:["ℝ","\\mathbb{R}"], C:["ℂ","\\mathbb{C}"],
+  R:["ℝ","\\mathbb{R}"], C:["ℂ","\\mathbb{C}"], Delta:["Δ","\\Delta"],
 };
 const TEX_OPS = {
   pm:["±","\\pm"], mp:["∓","\\mp"], cdot:["·","\\cdot"], times:["×","\\times"],
-  div:["÷","\\div"], cup:["∪","\\cup"], cap:["∩","\\cap"],
+  div:["÷","\\div"], cup:["∪","\\cup"], cap:["∩","\\cap"], circ:["∘","\\circ"],
 };
 const TEX_RELS = {
   le:["≤","\\le"], leq:["≤","\\le"], ge:["≥","\\ge"], geq:["≥","\\ge"],
@@ -2160,6 +2469,9 @@ function pairMap(toks){
       }
     }
     else if(t.k === "ch" && t.v === "|"){
+      const prev = toks[i-1];
+      // the bar of \big| is part of that command, not an absolute value
+      if(prev && prev.k === "cmd" && /^(big|Big|bigg|Bigg)$/.test(prev.v)) continue;
       if(barOpen < 0) barOpen = i;
       else { map[barOpen] = i; map[i] = barOpen; barOpen = -1; }
     }
@@ -2218,7 +2530,15 @@ function parseTex(src){
         p++;
         if(isSup && isCmd(peek(),"circ")){ p++; list.push(sym("°","^\\circ")); continue; }
         const g = parseGroup();
-        if(prev && (prev.t === "bigop" || prev.t === "limop")){
+        if(prev && prev.t === "evbar"){
+          if(isSup){
+            if(!prev.both){ prev.both = true; prev.s.push(L()); }
+            prev.s[1].push(...g);
+          } else {
+            prev.wantBounds = true;
+            prev.s[0].push(...g);
+          }
+        } else if(prev && (prev.t === "bigop" || prev.t === "limop")){
           const slot = prev.t === "limop" ? 0 : (isSup ? 1 : 0);
           prev.wantBounds = true;
           if(prev.s[slot]) prev.s[slot].push(...g); else prev.s[0].push(...g);
@@ -2312,6 +2632,7 @@ function parseTex(src){
       if(v === "+") return op("+","+");
       if(v === "-") return op("−","-");
       if(v === "=" || v === "<" || v === ">") return rel(v,v);
+      if(v === "~") return spc(SPC_W[" "], "~");        // an ordinary space
       if(v === "," || v === ";") return sym(v,v);
       if(v === "'") return sym("′","'");
       return ch(v);
@@ -2322,9 +2643,29 @@ function parseTex(src){
 
       if(TEX_SPACING.has(v)){
         p++;
-        return SPC_W[v] ? spc(SPC_W[v], "\\" + v) : null;   // \! and \  vanish
+        if(v === " ") return spc(SPC_W[" "], "~");   // \  and ~ are one thing
+        return SPC_W[v] ? spc(SPC_W[v], "\\" + v) : null;   // \! vanishes
       }
       if(TEX_IGNORE.has(v)){ p++; return null; }
+
+      // \big| and its larger siblings: the tall bar of "evaluated at".
+      // Any other \big… is only a size hint and carries no meaning here.
+      if(v === "big" || v === "Big" || v === "bigg" || v === "Bigg"){
+        p++;
+        const nx = toks[p];
+        if(nx && nx.k === "ch" && nx.v === "|"){
+          p++;
+          const after = toks[p];
+          // limits follow, so this is an evaluation bar; a bare one is a glyph
+          if(after && (after.k === "_" || after.k === "^")){
+            const n = evbar(false);
+            n.wantBounds = false;
+            return n;
+          }
+          return tallbar();
+        }
+        return null;
+      }
 
       if(v === "frac" || v === "dfrac" || v === "tfrac"){
         p++;
@@ -2480,6 +2821,10 @@ importText.addEventListener("keydown", e => {
 /* =========================================================================
    10. TOOLBAR
    ========================================================================= */
+document.getElementById("addGraph").addEventListener("click", () => {
+  if(isLocked()) return;
+  addGraphLine();
+});
 document.getElementById("addNote").addEventListener("click", () => {
   if(isLocked()) return;
   insertLineAfter(focusLine, newMathLine());
@@ -2519,6 +2864,10 @@ function refocusEditor(){
   if(bv && bv.hidden) return;                       // not on the board screen
   const modal = document.getElementById("importPanel");
   if(modal && !modal.hidden) return;                // the paste box wants it
+  // a real field — a graph's feature box, the minutes box — keeps its focus;
+  // the editor grabbing it back would make those impossible to type in
+  const a = document.activeElement;
+  if(a && a !== hidden && (a.tagName === "INPUT" || a.tagName === "SELECT")) return;
   hidden.focus();
 }
 /* A phone only raises its keyboard when focus() is called *inside* the touch
@@ -2535,11 +2884,812 @@ function keepFocus(e){
   refocusEditor();
   setTimeout(refocusEditor, 0);
 }
+/* clicking a maths line, the palette or the toolbar leaves the feature boxes */
+document.addEventListener("pointerdown", e => {
+  if(!gField) return;
+  const t = e.target;
+  if(t && t.closest && (t.closest(".gbox") || t.closest(".gnone") || t.closest(".palette"))) return;
+  gField = null;
+  // redraw AFTER the click has landed: rebuilding the board underneath a
+  // half-finished click swallows it, which ate the Graph button
+  setTimeout(render, 0);
+}, true);
 document.addEventListener("pointerdown", keepFocus);
 document.addEventListener("mousedown", keepFocus);
 /* and make the state visible, so "why can't I type" is answerable at a glance */
 hidden.addEventListener("focus", () => boardEl.classList.add("armed"));
 hidden.addEventListener("blur",  () => boardEl.classList.remove("armed"));
+
+
+/* =========================================================================
+   GRAPHING
+   A student does not sketch a curve — they state what determines it, and the
+   curve is drawn from that. Finding the intercepts and the asymptote IS the
+   assignment; the picture is the reward for getting them right.
+
+   Three pieces: a small evaluator for the numbers they type, a table of
+   function families each of which knows what it needs and how to solve for
+   itself, and a plotter.
+   ========================================================================= */
+
+/* ---- 1. the numbers a student types ------------------------------------
+   "e-3", "ln3 - 1", "pi/2", "sqrt(2)". Not the LaTeX editor: these are single
+   values, and a full editor in every little field would be a cage. */
+const GFN = {
+  sqrt: Math.sqrt, ln: Math.log, log: x => Math.log10(x), exp: Math.exp,
+  sin: Math.sin, cos: Math.cos, tan: Math.tan, abs: Math.abs
+};
+function evalNum(src){
+  const s = String(src == null ? "" : src);
+  let i = 0;
+  const ws = () => { while(i < s.length && /\s/.test(s[i])) i++; };
+  const eat = c => { ws(); if(s[i] === c){ i++; return true; } return false; };
+  let bad = null;
+  const fail = m => { if(!bad) bad = m; return NaN; };
+
+  function primary(){
+    ws();
+    if(eat("(")){ const v = sum(); if(!eat(")")) return fail("a bracket is not closed"); return v; }
+    if(eat("-")) return -primary();
+    if(eat("+")) return primary();
+    const num = /^\d*\.?\d+/.exec(s.slice(i));
+    if(num){ i += num[0].length; return parseFloat(num[0]); }
+    const word = /^[A-Za-z]+/.exec(s.slice(i));
+    if(word){
+      const w = word[0];
+      if(GFN[w]){ i += w.length; const a = power(); const v = GFN[w](a);
+                  return isFinite(v) ? v : fail(w + " is not defined there"); }
+      if(w === "pi"){ i += 2; return Math.PI; }
+      if(w === "e"){ i += 1; return Math.E; }
+      return fail("“" + w + "” is not a number");
+    }
+    return fail(i >= s.length ? "something is missing" : "“" + s[i] + "” does not belong here");
+  }
+  function power(){
+    const b = primary(); ws();
+    if(s[i] === "^"){ i++; return Math.pow(b, power()); }
+    return b;
+  }
+  function term(){
+    let v = power();
+    for(;;){ ws();
+      if(s[i] === "*"){ i++; v *= power(); }
+      else if(s[i] === "/"){ i++; v /= power(); }
+      else return v;
+    }
+  }
+  function sum(){
+    let v = term();
+    for(;;){ ws();
+      if(s[i] === "-"){ i++; v -= term(); }
+      else if(s[i] === "+"){ i++; v += term(); }
+      else return v;
+    }
+  }
+  if(!s.trim()) return {v:NaN, err:"empty"};
+  const v = sum(); ws();
+  if(bad) return {v:NaN, err:bad};
+  if(i < s.length) return {v:NaN, err:"“" + s.slice(i) + "” is left over"};
+  if(!isFinite(v)) return {v:NaN, err:"that is not a number"};
+  return {v, err:null};
+}
+function evalPt(src){
+  const s = String(src == null ? "" : src).trim().replace(/^\(|\)$/g, "");
+  const parts = splitTop(s);
+  if(parts.length !== 2) return {v:null, err:"a point needs two numbers, like (2, 5)"};
+  const a = evalNum(parts[0]), b = evalNum(parts[1]);
+  if(a.err) return {v:null, err:a.err};
+  if(b.err) return {v:null, err:b.err};
+  return {v:[a.v, b.v], err:null};
+}
+/* split on commas that are not inside brackets */
+function splitTop(s){
+  const out = []; let d = 0, cur = "";
+  for(const c of s){
+    if(c === "(") d++;
+    else if(c === ")") d--;
+    if(c === "," && d === 0){ out.push(cur); cur = ""; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+
+/* ---- 1b. reading a number out of the editor's own expression tree -------
+   The feature boxes hold real mathematics now, not text, so what has to be
+   evaluated is a node list: "x = -3", "(e-3, 0)", "\frac{1}{2}". Implicit
+   multiplication is allowed, because students write 2e and mean 2·e. */
+function evalNode(list){
+  let bad = null;
+  const fail = m => { if(!bad) bad = m; return NaN; };
+  const nodes = (list || []).filter(n => n && n.t !== "spc");
+  let i = 0;
+
+  const isDigit = n => n && n.t === "c" && /[0-9.]/.test(n.v);
+  const isLetter = n => n && n.t === "c" && /[A-Za-z]/.test(n.v);
+
+  function number(){
+    let s = "";
+    while(i < nodes.length && isDigit(nodes[i])) s += nodes[i++].v;
+    const v = parseFloat(s);
+    return isFinite(v) ? v : fail("“" + s + "” is not a number");
+  }
+
+  const FN1 = {sin:Math.sin, cos:Math.cos, tan:Math.tan, ln:Math.log,
+               log:x => Math.log10(x), sqrt:Math.sqrt, exp:Math.exp,
+               sec:x => 1/Math.cos(x), csc:x => 1/Math.sin(x), cot:x => 1/Math.tan(x)};
+
+  function atom(){
+    const n = nodes[i];
+    if(!n) return fail("something is missing");
+
+    if(isDigit(n)) return number();
+
+    if(n.t === "sym"){
+      i++;
+      if(n.v === "π") return Math.PI;
+      if(n.v === "∞") return fail("infinity is not a number you can plot");
+      return fail("“" + n.v + "” is not a number");
+    }
+    if(isLetter(n)){
+      i++;
+      if(n.v === "e") return Math.E;
+      return fail("“" + n.v + "” has no value here — write a number");
+    }
+    if(n.t === "fn"){
+      i++;
+      const f = FN1[n.v];
+      if(!f) return fail("\\" + n.v + " is not something I can work out");
+      const a = power();
+      const v = f(a);
+      return isFinite(v) ? v : fail(n.v + " is not defined there");
+    }
+    if(n.t === "frac"){
+      i++;
+      const a = evalNode(n.s[0]), b = evalNode(n.s[1]);
+      if(isNaN(a) || isNaN(b)) return fail("that fraction has something wrong in it");
+      if(b === 0) return fail("that fraction divides by zero");
+      return a / b;
+    }
+    if(n.t === "sqrt"){
+      i++;
+      const a = evalNode(n.s[0]);
+      if(a < 0) return fail("a square root of a negative number is not a real number");
+      return Math.sqrt(a);
+    }
+    if(n.t === "root"){
+      i++;
+      const k = evalNode(n.s[0]), a = evalNode(n.s[1]);
+      if(!k) return fail("that root has no index");
+      const s = a < 0 ? -1 : 1;
+      if(a < 0 && Math.abs(k % 2) !== 1) return fail("that root of a negative number is not real");
+      return s * Math.pow(Math.abs(a), 1 / k);
+    }
+    if(n.t === "delim"){
+      i++;
+      const inner = evalNode(n.s[0]);
+      if(isNaN(inner)) return fail("there is something wrong inside the brackets");
+      return n.l === "|" ? Math.abs(inner) : inner;
+    }
+    if(n.t === "op" && (n.v === "-" || n.v === "−")){ i++; return -power(); }
+    if(n.t === "op" && n.v === "+"){ i++; return power(); }
+    if(n.t === "blank"){ i++; return evalNode(n.s[0]); }
+    return fail("“" + (n.v || n.t) + "” does not belong in a number");
+  }
+
+  function power(){
+    let v = atom();
+    while(i < nodes.length && nodes[i].t === "sup"){
+      const e = evalNode(nodes[i].s[0]); i++;
+      v = Math.pow(v, e);
+    }
+    return v;
+  }
+  /* juxtaposition multiplies: 2e, 2\sqrt{3}, 3(x) */
+  function term(){
+    let v = power();
+    for(;;){
+      const n = nodes[i];
+      if(!n) return v;
+      if(n.t === "op"){
+        if(n.v === "·" || n.v === "×"){ i++; v *= power(); continue; }
+        if(n.v === "÷"){ i++; const d = power();
+                         if(!d) return fail("that divides by zero"); v /= d; continue; }
+        return v;                                   // + and − belong to sum()
+      }
+      if(n.t === "rel" || (n.t === "sym" && /[,;]/.test(n.v))) return v;
+      v *= power();                                  // written side by side
+      if(bad) return NaN;
+    }
+  }
+  function sum(){
+    let v = term();
+    for(;;){
+      const n = nodes[i];
+      if(n && n.t === "op" && (n.v === "-" || n.v === "−")){ i++; v -= term(); }
+      else if(n && n.t === "op" && n.v === "+"){ i++; v += term(); }
+      else return v;
+    }
+  }
+
+  if(!nodes.length) return NaN;
+  const v = sum();
+  if(bad){ evalNode.err = bad; return NaN; }
+  if(i < nodes.length){
+    evalNode.err = "there is more here than one number";
+    return NaN;
+  }
+  if(!isFinite(v)){ evalNode.err = "that does not work out to a number"; return NaN; }
+  evalNode.err = null;
+  return v;
+}
+/* {v, err} the way the rest of the code expects */
+function numOf(list){
+  evalNode.err = null;
+  if(!list || !list.length) return {v:NaN, err:"empty"};
+  const v = evalNode(list);
+  return isNaN(v) ? {v:NaN, err:evalNode.err || "that is not a number"} : {v, err:null};
+}
+/* split a node list on top-level commas */
+function commaParts(list){
+  const out = [[]];
+  for(const n of (list || [])){
+    if(n.t === "sym" && n.v === ",") out.push([]);
+    else out[out.length-1].push(n);
+  }
+  return out;
+}
+/* split on a top-level "=" */
+function eqParts(list){
+  const at = (list || []).findIndex(n => n.t === "rel" && n.v === "=");
+  return at < 0 ? null : [list.slice(0, at), list.slice(at + 1)];
+}
+
+/* ---- 2. tidy numbers back out ------------------------------------------ */
+function numText(v){
+  if(!isFinite(v)) return "?";
+  if(Math.abs(v) < 1e-10) return "0";
+  const r = Math.round(v);
+  if(Math.abs(v - r) < 1e-9) return String(r);
+  return String(parseFloat(v.toPrecision(5)));
+}
+/* "+ 3" / "− 3", for building a readable equation */
+function signed(v){
+  if(Math.abs(v) < 1e-10) return "";
+  return (v < 0 ? " - " : " + ") + numText(Math.abs(v));
+}
+function coef(a){
+  if(Math.abs(a - 1) < 1e-10) return "";
+  if(Math.abs(a + 1) < 1e-10) return "-";
+  return numText(a);
+}
+
+/* ---- 3. the families ---------------------------------------------------
+   A student is not plotting arbitrary points: they are locating KEY FEATURES,
+   which is the actual work. So the fields are named — the asymptote, the
+   x-intercept, the y-intercept — and each family knows which of its features
+   can honestly be "none", and which cannot.
+
+   Adding a family is an entry in this table and nothing else. */
+
+/* "none" is a state the student toggles, not a word typed into a maths box */
+const NONEVAL = "\u0000none";
+
+/* One feature box. The student writes the whole thing — "x = -3", "(e-3, 0)" —
+   as real mathematics, in the same editor as the rest of their work. Knowing
+   that an x-intercept is a point, and an asymptote an equation, is part of
+   what is being asked, so no example is offered inside the box. */
+function readField(fd, raw){
+  if(raw === NONEVAL) return {none:true};
+  const txt = String(raw == null ? "" : raw).trim();
+  if(!txt) return {empty:true};
+  const list = parseTex(txt).list;
+  link(list, null);
+
+  if(fd.kind === "eqx"){
+    const halves = eqParts(list);
+    if(!halves) return {err:"write it as an equation, like x = -3"};
+    const lhs = halves[0].filter(n => n.t !== "spc");
+    if(lhs.length !== 1 || lhs[0].t !== "c" || lhs[0].v.toLowerCase() !== "x")
+      return {err:"a vertical asymptote is an equation in x, like x = -3"};
+    const r = numOf(halves[1]);
+    return r.err ? {err:r.err} : {v:r.v};
+  }
+
+  if(fd.kind === "base"){
+    const r = numOf(list);
+    if(r.err) return {err:r.err};
+    if(r.v <= 0) return {err:"a base has to be positive"};
+    if(Math.abs(r.v - 1) < 1e-12) return {err:"1 cannot be the base of a logarithm"};
+    return {v:r.v, raw:txt};
+  }
+
+  if(fd.kind === "pt" || fd.kind === "ptx" || fd.kind === "pty"){
+    const bare = list.filter(n => n.t !== "spc");
+    if(bare.length !== 1 || bare[0].t !== "delim" || bare[0].l !== "(")
+      return {err:"write a point, in brackets — like (2, 5)"};
+    const parts = commaParts(bare[0].s[0]);
+    if(parts.length !== 2) return {err:"a point needs two numbers, like (2, 5)"};
+    const a = numOf(parts[0]), c = numOf(parts[1]);
+    if(a.err) return {err:a.err};
+    if(c.err) return {err:c.err};
+    if(fd.kind === "ptx" && Math.abs(c.v) > 1e-9)
+      return {err:"an x-intercept sits on the x-axis, so its y must be 0"};
+    if(fd.kind === "pty" && Math.abs(a.v) > 1e-9)
+      return {err:"a y-intercept sits on the y-axis, so its x must be 0"};
+    return {pt:[a.v, c.v]};
+  }
+
+  const r = numOf(list);
+  return r.err ? {err:r.err} : {v:r.v};
+}
+
+/* everything the student has said so far — enough to draw the features on
+   their own, before there is any curve to draw */
+function readFeatures(G){
+  const F = FAMILIES[G.fam];
+  const val = {}, raw = {}, marks = [], asym = [], errs = [], missing = [];
+  for(const fd of F.fields){
+    const r = readField(fd, (G.f || {})[fd.k]);
+    if(r.err){ errs.push(fd.label + ": " + r.err); continue; }
+    if(r.empty){ if(!fd.opt) missing.push(fd.label); val[fd.k] = undefined; continue; }
+    if(r.none){ val[fd.k] = null; continue; }
+    val[fd.k] = r.pt ? r.pt : r.v;
+    if(r.raw !== undefined) raw[fd.k] = r.raw;
+    if(r.pt) marks.push(r.pt);
+    if(fd.asym === "v") asym.push({x:r.v});
+    if(fd.asym === "h") asym.push({y:r.v});
+  }
+  return {val, raw, marks, asym, errs, missing};
+}
+
+/* how a logarithm in this base is written */
+function logTex(base, rawBase){
+  if(Math.abs(base - Math.E) < 1e-12) return "\\ln";
+  if(Math.abs(base - 10) < 1e-12) return "\\log";
+  return "\\log_{" + (rawBase && /^[0-9.]+$/.test(rawBase) ? rawBase : numText(base)) + "}";
+}
+
+const FAMILIES = {
+  log: {
+    label: "Logarithmic",
+    fields: [
+      {k:"va",   kind:"eqx",  asym:"v", label:"equation of vertical asymptote"},
+      {k:"base", kind:"base", label:"base of the logarithm"},
+      {k:"xint", kind:"ptx",  none:true, label:"x-intercept"},
+      {k:"yint", kind:"pty",  none:true, label:"y-intercept"},
+      {k:"pt",   kind:"pt",   label:"another point on the curve", opt:true,
+       // only asked for when the intercepts alone cannot settle the curve
+       show:(G, sol) => !!(sol && sol.wantPoint) ||
+                        !!(G.f && String(G.f.pt || "").trim())}
+    ],
+
+    /* What this family knows about itself, which is what lets it mark work:
+       a logarithm always crosses the x-axis exactly once, and it crosses the
+       y-axis exactly when the y-axis is inside its domain. */
+    check(v){
+      if(v.va === undefined) return null;
+      if(v.xint === null)
+        return "every logarithm crosses the x-axis exactly once, so there is an x-intercept to find";
+      if(v.yint === null && v.pt === undefined && v.xint){
+        const side = Math.sign(v.xint[0] - v.va);
+        if((side > 0 && v.va < 0) || (side < 0 && v.va > 0))
+          return "with the asymptote at x = " + numText(v.va) +
+                 " the curve does cross the y-axis — there is a y-intercept to find";
+      }
+      return null;
+    },
+
+    solve(v, pts, all, raw){
+      const h = v.va, base = v.base;
+      if(pts.length < 2){
+        if((all || pts).length >= 2)
+          return {wantPoint:true,
+                  need:"the two intercepts are the same point here, so they only pin down one thing — give another point on the curve"};
+        return {wantPoint:true, need:"give another point on the curve"};
+      }
+      const [p, q] = pts;
+      const sL = Math.sign(p[0] - h), sR = Math.sign(q[0] - h);
+      if(sL === 0 || sR === 0) return {err:"a point cannot sit on the asymptote"};
+      if(sL !== sR)
+        return {err:"those points are on opposite sides of the asymptote — no logarithm passes through both"};
+      const s = sL;
+      const L1 = Math.log(s * (p[0] - h)), L2 = Math.log(s * (q[0] - h));
+      if(Math.abs(L1 - L2) < 1e-12)
+        return {err:"two of those features have the same x, so they cannot both pin down the curve"};
+      // solved in natural logs, then written in the base the student is using:
+      // a·log_b(u) is A·ln(u) with A = a / ln b, so a = A · ln b
+      const A = (p[1] - q[1]) / (L1 - L2);
+      const k = p[1] - A * L1;
+      if(!isFinite(A) || !isFinite(k)) return {err:"those features do not determine a curve"};
+      if(Math.abs(A) < 1e-12) return {err:"those features give a flat line, not a logarithm"};
+      const a = A * Math.log(base);
+      const inner = s > 0 ? "x" + signed(-h) : numText(h) + " - x";
+      return {
+        fn: x => { const u = s * (x - h); return u > 0 ? A * Math.log(u) + k : NaN; },
+        tex: "y = " + coef(a) + logTex(base, (raw || {}).base) +
+             "\\left(" + inner + "\\right)" + signed(k)
+      };
+    }
+  }
+};
+
+/* ---- 4. drawing --------------------------------------------------------- */
+function niceStep(span, want){
+  const raw = span / Math.max(1, want);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / mag;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+}
+/* a window that shows the features the student gave, with room around them */
+function windowFor(sol){
+  const xs = [], ys = [];
+  (sol.marks || []).forEach(([x,y]) => { xs.push(x); ys.push(y); });
+  (sol.near  || []).forEach(x => xs.push(x));
+  (sol.asymptotes || []).forEach(a => { if(a.x !== undefined) xs.push(a.x);
+                                        if(a.y !== undefined) ys.push(a.y); });
+  if(!xs.length){ xs.push(-5, 5); }
+  if(!ys.length){ ys.push(-5, 5); }
+  if(xs.length === 1){ xs.push(xs[0] + 4, xs[0] - 4); }
+  if(ys.length === 1){ ys.push(ys[0] + 3, ys[0] - 3); }
+  let x0 = Math.min(...xs), x1 = Math.max(...xs);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const padX = Math.max((x1 - x0) * 0.55, 3), padY = Math.max((y1 - y0) * 0.55, 2.5);
+  x0 -= padX; x1 += padX; y0 -= padY; y1 += padY;
+  // always show the origin, so a student can read the intercepts off the axes
+  x0 = Math.min(x0, -1); x1 = Math.max(x1, 1);
+  y0 = Math.min(y0, -1); y1 = Math.max(y1, 1);
+  return {x0, x1, y0, y1};
+}
+
+function drawPlot(cv, sol, win, opt){
+  opt = opt || {};
+  const w = cv.clientWidth || opt.w || 520, h = cv.clientHeight || opt.h || 340;
+  const dpr = (typeof devicePixelRatio === "number" ? devicePixelRatio : 1);
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+
+  const cs = getComputedStyle(document.body);
+  const C = n => (cs.getPropertyValue(n) || "").trim();
+  const grid = C("--line") || "#dfe4e2", ink = C("--ink") || "#12211e";
+  const curve = C("--accent") || "#0f766e", mark = C("--slot") || "#c2410c";
+  const mute = C("--muted") || "#6b7f7a";
+  const small = !!opt.small;
+
+  const {x0, x1, y0, y1} = win;
+  const px = x => (x - x0) / (x1 - x0) * w;
+  const py = y => h - (y - y0) / (y1 - y0) * h;
+
+  // grid and ticks
+  const sx = niceStep(x1 - x0, small ? 4 : 10), sy = niceStep(y1 - y0, small ? 3 : 7);
+  g.lineWidth = 1; g.strokeStyle = grid;
+  for(let x = Math.ceil(x0/sx)*sx; x <= x1; x += sx){
+    g.beginPath(); g.moveTo(px(x), 0); g.lineTo(px(x), h); g.stroke();
+  }
+  for(let y = Math.ceil(y0/sy)*sy; y <= y1; y += sy){
+    g.beginPath(); g.moveTo(0, py(y)); g.lineTo(w, py(y)); g.stroke();
+  }
+  // axes
+  g.strokeStyle = ink; g.lineWidth = 1.4;
+  const ax = Math.max(0, Math.min(h, py(0))), ay = Math.max(0, Math.min(w, px(0)));
+  g.beginPath(); g.moveTo(0, ax); g.lineTo(w, ax); g.stroke();
+  g.beginPath(); g.moveTo(ay, 0); g.lineTo(ay, h); g.stroke();
+
+  if(!small){
+    g.fillStyle = mute; g.font = "11px ui-sans-serif, system-ui";
+    g.textAlign = "center"; g.textBaseline = "top";
+    for(let x = Math.ceil(x0/sx)*sx; x <= x1; x += sx){
+      if(Math.abs(x) < sx/2) continue;
+      const at = px(x);
+      if(at < 14 || at > w - 14) continue;          // no half-labels at the edge
+      g.fillText(numText(x), at, Math.min(h - 14, ax + 4));
+    }
+    g.textAlign = "right"; g.textBaseline = "middle";
+    for(let y = Math.ceil(y0/sy)*sy; y <= y1; y += sy){
+      if(Math.abs(y) < sy/2) continue;
+      const at = py(y);
+      if(at < 9 || at > h - 9) continue;
+      g.fillText(numText(y), Math.max(24, Math.min(w - 4, ay - 5)), at);
+    }
+  }
+
+  // the asymptotes the student stated
+  g.strokeStyle = mark; g.lineWidth = 1.5; g.setLineDash([5, 4]);
+  (sol.asymptotes || []).forEach(a => {
+    if(a.x !== undefined){ g.beginPath(); g.moveTo(px(a.x), 0); g.lineTo(px(a.x), h); g.stroke(); }
+    if(a.y !== undefined){ g.beginPath(); g.moveTo(0, py(a.y)); g.lineTo(w, py(a.y)); g.stroke(); }
+  });
+  g.setLineDash([]);
+
+  // the curve. Sampled per pixel, and broken wherever it leaves the world or
+  // jumps — otherwise an asymptote is drawn as a vertical line, which is a lie.
+  if(sol.fn){
+  g.strokeStyle = curve; g.lineWidth = small ? 1.6 : 2.6;
+  g.lineJoin = "round"; g.lineCap = "round";
+  const N = Math.max(60, Math.round(w * 2));
+  const jump = (y1 - y0) * 0.55;
+  let drawing = false, prevY = null;
+  g.beginPath();
+  for(let i = 0; i <= N; i++){
+    const x = x0 + (x1 - x0) * i / N;
+    const y = sol.fn(x);
+    const ok = isFinite(y) && y > y0 - (y1 - y0) * 3 && y < y1 + (y1 - y0) * 3;
+    if(!ok){ drawing = false; prevY = null; continue; }
+    if(drawing && prevY !== null && Math.abs(y - prevY) > jump){ drawing = false; }
+    if(!drawing){ g.moveTo(px(x), py(y)); drawing = true; }
+    else g.lineTo(px(x), py(y));
+    prevY = y;
+  }
+  g.stroke();
+  }
+
+  // the points they gave
+  if(!small){
+    g.fillStyle = mark;
+    (sol.marks || []).forEach(([x, y]) => {
+      g.beginPath(); g.arc(px(x), py(y), 4.5, 0, 7); g.fill();
+    });
+  }
+}
+
+/* ---- 5. a graph is a line on the board ---------------------------------
+   Not a panel beside the editor: the maths keeps its full width and the graph
+   takes its turn in the flow of the work, the way a sketch does on paper. */
+function newGraphLine(fam){
+  return {id:uid++, kind:"graph", g:{fam: fam || "log", f:{}, on:false}};
+}
+
+/* Everything about the state of one graph line: what has been said, whether
+   it is enough, what is wrong with it, and the curve if there is one. */
+function solveGraph(G){
+  const F = FAMILIES[G.fam];
+  if(!F) return {err:"unknown family"};
+  const R = readFeatures(G);
+  const out = {marks:R.marks, asymptotes:R.asym, near:R.asym.map(a => a.x).filter(x => x !== undefined)};
+
+  if(R.errs.length) return Object.assign(out, {err:R.errs[0]});
+
+  // a claim that cannot be true is worth saying so, even before graphing
+  const wrong = F.check ? F.check(R.val) : null;
+  if(wrong) return Object.assign(out, {err:wrong});
+
+  if(R.missing.length)
+    return Object.assign(out, {need:"still to work out: " + R.missing.join(", ")});
+
+  // the point-shaped features, in the order the family listed them
+  const PTKIND = {pt:1, ptx:1, pty:1};
+  const pts = [];
+  for(const fd of F.fields){
+    const v = R.val[fd.k];
+    if(v === undefined || v === null) continue;
+    if(PTKIND[fd.kind]) pts.push(v);
+  }
+
+  // Two features at the same place say one thing between them, not two — a
+  // logarithm through the origin has both intercepts there. Solve from the
+  // distinct ones, then check every feature against the answer.
+  const uniq = [];
+  for(const q of pts)
+    if(!uniq.some(u => Math.abs(u[0]-q[0]) < 1e-12 && Math.abs(u[1]-q[1]) < 1e-12))
+      uniq.push(q);
+
+  const sol = F.solve(R.val, uniq, pts, R.raw);
+  if(sol.need || sol.err) return Object.assign(out, sol);
+
+  for(const [x, y] of pts){
+    const at = sol.fn(x);
+    if(!isFinite(at) || Math.abs(at - y) > 1e-6){
+      return Object.assign(out, {
+        err: "the point (" + numText(x) + ", " + numText(y) +
+             ") does not sit on the curve your other features give"
+      });
+    }
+  }
+  return Object.assign(out, sol);
+}
+/* the features alone, for drawing before the curve is asked for */
+function readyToGraph(G){
+  const s = solveGraph(G);
+  return !s.err && !s.need && !!s.fn;
+}
+
+/* the whole line as one string, so it travels through everything that already
+   carries a line of LaTeX. "%" opens a comment in LaTeX, so this is metadata
+   by construction rather than maths pretending to be metadata. */
+function graphToText(gl){ return "%%G " + JSON.stringify(gl.g); }
+function graphFromText(t){
+  try{
+    const g = JSON.parse(t.slice(4));
+    if(!g || !FAMILIES[g.fam]) return null;
+    return {id:uid++, kind:"graph",
+            g:{fam:g.fam, f:Object.assign({}, g.f), on:!!g.on}};
+  }catch(e){ return null; }
+}
+const isGraphText = t => typeof t === "string" && t.slice(0, 4) === "%%G ";
+
+/* ---- 6. what it looks like on the board --------------------------------
+   Each feature box is a real maths field, edited through the same hidden
+   textarea and the same palette as everything else — so a student can put a
+   fraction or a radical in an intercept, and it is typeset while they type.
+   The features are plotted as they are entered; the curve waits to be asked
+   for, and that moment is the point: if the equation that comes back is the
+   one they worked out by hand, their features were right. */
+
+/* the field the caret is in, if any */
+let gField = null;                 // {id, k}
+
+/* Each field keeps a live node list while it is being worked on, so the caret
+   has something stable to sit in across re-renders. */
+function fieldTree(ln, k){
+  ln.gt = ln.gt || {};
+  if(!ln.gt[k]){
+    const raw = ln.g.f[k];
+    const t = L();
+    if(raw && raw !== NONEVAL) t.push(...parseTex(raw).list);
+    link(t, null);
+    ln.gt[k] = t;
+  }
+  return ln.gt[k];
+}
+function saveField(ln, k){
+  const t = ln.gt && ln.gt[k];
+  if(t) ln.g.f[k] = texList(t);
+}
+function focusField(ln, k, atEnd){
+  const t = fieldTree(ln, k);
+  if(ln.g.f[k] === NONEVAL) ln.g.f[k] = "";
+  gField = {id:ln.id, k};
+  focusLine = lines.indexOf(ln);
+  cur = {list:t, i: atEnd === false ? 0 : t.length};
+  sel = null; pending = null; textMode = false;
+  relink();
+  render();
+  hidden.focus();
+}
+/* leaving the fields entirely — the caret goes back to ordinary maths */
+function blurFields(){ if(gField){ gField = null; } }
+
+/* which fields this family is showing right now */
+function shownFields(ln, sol){
+  return FAMILIES[ln.g.fam].fields.filter(fd => !fd.show || fd.show(ln.g, sol));
+}
+/* Tab and Enter walk the boxes */
+function stepField(ln, dir){
+  const sol = solveGraph(ln.g);
+  const fs = shownFields(ln, sol).map(f => f.k);
+  const at = fs.indexOf(gField && gField.k);
+  const next = at + dir;
+  if(next >= 0 && next < fs.length){ focusField(ln, fs[next]); return true; }
+  return false;
+}
+
+function renderGraphBody(ln, live){
+  const G = ln.g, F = FAMILIES[G.fam];
+  const wrap = document.createElement("div");
+  wrap.className = "gline";
+  const left = document.createElement("div"); left.className = "gcolplot";
+  const side = document.createElement("div"); side.className = "gcolside";
+  wrap.append(left, side);
+
+  const fam = document.createElement("div");
+  fam.className = "gfam";
+  fam.textContent = F.label + " — key features";
+  side.appendChild(fam);
+
+  const sol0 = solveGraph(G);
+  const feat = document.createElement("div");
+  feat.className = "gfeat";
+  shownFields(ln, sol0).forEach(fd => {
+    const item = document.createElement("div"); item.className = "gitem";
+    const lab = document.createElement("b"); lab.textContent = fd.label + ":";
+    item.appendChild(lab);
+
+    const shell = document.createElement("span"); shell.className = "gshell";
+    const isNone = G.f[fd.k] === NONEVAL;
+    const box = document.createElement("span");
+    box.className = "gbox" + (isNone ? " none" : "");
+    box.dataset.gk = fd.k;
+
+    if(isNone){
+      box.textContent = "none";
+    } else if(live){
+      const t = fieldTree(ln, fd.k);
+      const here = !!(gField && gField.id === ln.id && gField.k === fd.k);
+      if(here) box.classList.add("here");
+      box.appendChild(renderList(t, here));
+      box.addEventListener("mousedown", e => {
+        e.preventDefault(); e.stopPropagation();
+        focusField(ln, fd.k);
+      });
+    } else {
+      const raw = G.f[fd.k];
+      if(raw){ const p = parseTex(raw); link(p.list, null); box.appendChild(renderList(p.list, false)); }
+      else box.textContent = "—";
+    }
+    shell.appendChild(box);
+
+    // a feature that can honestly be absent gets a switch rather than a word
+    if(fd.none && live){
+      const t = document.createElement("button");
+      t.type = "button";
+      t.className = "gnone" + (isNone ? " on" : "");
+      t.textContent = "none";
+      t.title = "there is no " + fd.label;
+      t.addEventListener("click", () => {
+        if(G.f[fd.k] === NONEVAL){ G.f[fd.k] = ""; }
+        else { G.f[fd.k] = NONEVAL; if(ln.gt) delete ln.gt[fd.k];
+               if(gField && gField.k === fd.k) gField = null; }
+        G.on = false;
+        render(); schedulePublish(); refocusEditor();
+      });
+      shell.appendChild(t);
+    } else if(live){
+      // keep the boxes in one column whether or not this one can be "none"
+      const gap = document.createElement("span");
+      gap.className = "gnone spacer";
+      gap.textContent = "none";
+      shell.appendChild(gap);
+    }
+    item.appendChild(shell);
+    feat.appendChild(item);
+  });
+  side.appendChild(feat);
+
+  const sol = sol0;
+  const ready = !sol.err && !sol.need && !!sol.fn;
+
+  const bar = document.createElement("div");
+  bar.className = "gbar";
+  if(live){
+    const btn = document.createElement("button");
+    btn.className = "btn on gbtn";
+    btn.type = "button";
+    btn.textContent = G.on ? "Graphed" : "Graph";
+    btn.disabled = !ready || G.on;
+    btn.addEventListener("click", () => {
+      if(!readyToGraph(G)) return;
+      G.on = true;
+      render(); schedulePublish(); refocusEditor();
+    });
+    bar.appendChild(btn);
+  }
+  if(sol.err || sol.need){
+    const m = document.createElement("span");
+    m.className = "gmsg " + (sol.err ? "bad" : "need");
+    m.textContent = sol.err || sol.need;
+    bar.appendChild(m);
+  } else if(!G.on){
+    const m = document.createElement("span");
+    m.className = "gmsg need";
+    m.textContent = "the features are enough — draw the curve";
+    bar.appendChild(m);
+  }
+  side.appendChild(bar);
+
+  if(G.on && ready){
+    const out = document.createElement("div");
+    out.className = "geq";
+    const cap = document.createElement("em"); cap.textContent = "the curve that fits";
+    const eq = document.createElement("span");
+    const parsed = parseTex(sol.tex);
+    link(parsed.list, null);
+    eq.appendChild(renderList(parsed.list, false));
+    out.append(cap, eq);
+    side.appendChild(out);
+  }
+
+  const cv = document.createElement("canvas");
+  cv.className = "gplot";
+  left.appendChild(cv);
+  const shown = Object.assign({}, sol, {fn: (G.on && ready) ? sol.fn : null});
+  requestAnimationFrame(() => {
+    if(cv.isConnected) drawPlot(cv, shown, windowFor(shown));
+  });
+  return wrap;
+}
 
 buildPalette();
 resetBoard();
@@ -2600,7 +3750,10 @@ function LocalSync(room){
     on(type, fn){ (handlers[type] = handlers[type] || []).push(fn); },
     send(type, payload){ ch.postMessage(Object.assign({type}, payload)); },
     ready(fn){ setTimeout(() => fn(id), 0); },
-    close(){ try{ ch.close(); }catch(e){} }
+    close(){ try{ ch.close(); }catch(e){} },
+    wipe(){ return Promise.resolve(); },       // nothing is stored to erase
+    now(){ return Date.now(); },
+    drop(){ return Promise.resolve(); }
   };
 }
 
@@ -2699,6 +3852,22 @@ async function signOutTeacher(){
   paintSignIn();
 }
 /* whichever account this device should be using for the role it is taking */
+/* Every class code this teacher has opened in this session. Signing out
+   erases all of them, not just whichever one is on screen. */
+const touchedRooms = new Set();
+
+/* The rules give the teacher write access to the whole room node, so this is
+   one call: the boards, the feedback, the checkmarks, the problem, the timer,
+   all of it gone. Nothing about a lesson is meant to outlive the lesson. */
+async function wipeRooms(rooms){
+  if(!FIREBASE_CONFIG.apiKey) return;
+  const F = await ensureFirebase();
+  for(const r of rooms){
+    try{ await F.D.remove(F.D.ref(F.db, "rooms/" + r)); }
+    catch(e){ reportError("erasing " + r, e); }
+  }
+}
+
 async function accountFor(role){
   const F = await ensureFirebase();
   if(role === "teacher"){
@@ -2748,6 +3917,11 @@ function FirebaseSync(room, role){
       if(!p.seconds) W("the timer", d.remove(d.ref(db, R + "/timer")));
       else W("the timer", d.set(d.ref(db, R + "/timer"), {endsAt: Date.now() + offset + p.seconds * 1000}));
     }
+    else if(type === "end"){
+      // students go back to the join screen and stop publishing, so the wipe
+      // that follows actually leaves the room empty
+      W("ending", d.set(d.ref(db, R + "/closed"), -(Date.now() + offset)));
+    }
     else if(type === "close"){
       // Written child by child, never to the room root. The rules deliberately
       // do not allow writing the room node itself — that is what stops one
@@ -2771,7 +3945,19 @@ function FirebaseSync(room, role){
 
     // every device counts the clock down from the same instant
     d.onValue(d.ref(db, ".info/serverTimeOffset"), s => { offset = s.val() || 0; });
-    d.onValue(d.ref(db, ".info/connected"), s => setConn(s.val() ? "online" : "offline"));
+    // If the teacher's tab closes, crashes or drops off the network, the room
+    // goes with it. On coming back the app republishes what it still holds,
+    // so a flaky minute of wifi does not cost the lesson.
+    let wasOnline = false;
+    d.onValue(d.ref(db, ".info/connected"), s => {
+      const on = !!s.val();
+      setConn(on ? "online" : "offline");
+      if(on && role === "teacher"){
+        d.onDisconnect(d.ref(db, R)).remove();
+        if(wasOnline === false && uid) fire("reconnected", {});
+      }
+      wasOnline = on;
+    });
 
     const E = what => err => reportError("reading " + what, err);
 
@@ -2811,7 +3997,7 @@ function FirebaseSync(room, role){
     });
     d.onValue(d.ref(db, R + "/closed"), s => {
       const t = s.val() || 0;
-      if(t && t !== lastClosed){ lastClosed = t; fire("close", {}); }
+      if(t && t !== lastClosed){ lastClosed = t; fire("close", {ended: t < 0}); }
     });
 
     readyCbs.forEach(f => f(uid));
@@ -2829,7 +4015,10 @@ function FirebaseSync(room, role){
     close(){
       dead = true;
       if(d && uid) try{ d.remove(d.ref(db, R + "/boards/" + uid)); }catch(e){}
-    }
+    },
+    wipe(){ if(d) return d.remove(d.ref(db, R)); },
+    now(){ return Date.now() + offset; },       // the clock everyone agrees on
+    drop(id){ if(d) return d.remove(d.ref(db, R + "/boards/" + id)); }
   };
 }
 
@@ -2878,16 +4067,22 @@ function showScreen(name){
 
 /* ---- moving whole boards in and out of the editor ---------------------- */
 function currentLines(){
-  return lines.map(l => texList(l.root));
+  return lines.map(l => l.kind === "graph" ? graphToText(l) : texList(l.root));
 }
 function loadLines(arr){
   const src = asLines(arr);
   lines = (src.length ? src : [""]).map(t => {
+    if(isGraphText(t)){ const gl = graphFromText(t); if(gl) return gl; }
     const ln = newMathLine();
     if(t) ln.root.push(...parseTex(t).list);
     return ln;
   });
+  // the caret belongs on a line that can hold one
   focusLine = lines.length - 1;
+  while(focusLine > 0 && lines[focusLine].kind !== "math") focusLine--;
+  if(lines[focusLine].kind !== "math"){
+    lines.push(newMathLine()); focusLine = lines.length - 1;
+  }
   const ln = lines[focusLine];
   cur = {list:ln.root, i:ln.root.length};
   sel = null; pending = null; textMode = false;
@@ -2952,7 +4147,8 @@ function join(asRole, room, name){
       showTick();
     });
     sync.on("timer", m => startTimer(m.seconds));
-    sync.on("close", () => {
+    sync.on("close", m => {
+      if(m && m.ended){ leave(); return; }     // the teacher ended the session
       startTimer(0);
       problemItems = []; stripDrawn = null; myFeedback = []; myCheck = false;
       showStrip(); showFeedback(); showTick();
@@ -2974,6 +4170,13 @@ function join(asRole, room, name){
     document.getElementById("tEmptyRoom").textContent = myRoom;
     showScreen("teacher");
     sync.on("board", m => {
+      // a leftover board from an earlier session is not a student in the room
+      const when = m.at || Date.now();
+      const nowT = sync && sync.now ? sync.now() : Date.now();
+      if(nowT - when > PRESENT_MS){
+        if(sync.drop) try{ sync.drop(m.id); }catch(e){}
+        return;
+      }
       const prev = boards.get(m.id) || {};
       boards.set(m.id, {id:m.id, name:m.name || "student", lines:asLines(m.lines),
                         at:m.at || Date.now(),
@@ -3008,6 +4211,16 @@ function join(asRole, room, name){
     });
     // the teacher tracks the problem list too, so a new push adds to it
     sync.on("problem", m => { problemItems = m.items; refreshComposerCount(); });
+    // the room is erased if this tab drops off, so put the lesson back when
+    // the connection returns rather than leaving the class staring at nothing
+    sync.on("reconnected", () => {
+      if(problemItems.length) sync.send("problem", {items:problemItems});
+      const left = timerEnd - Date.now();
+      if(left > 1000) sync.send("timer", {seconds: Math.round(left / 1000)});
+      fbMap.forEach((lines, id) => { if(lines.length) sync.send("feedback", {id, lines}); });
+      ckMap.forEach((on, id) => { if(on) sync.send("check", {id, on:true}); });
+    });
+    touchedRooms.add(myRoom);
     sync.ready(() => sync.send("hello", {}));
     agoTimer = setInterval(refreshAges, 5000);
   }
@@ -3048,6 +4261,24 @@ function renderStatic(host, arr, deferFit){
     const g = document.createElement("div"); g.className = "gutter";
     const n = document.createElement("b"); n.textContent = i + 1; g.appendChild(n);
     const body = document.createElement("div"); body.className = "linebody";
+    if(isGraphText(t)){
+      const gl = graphFromText(t);
+      const sol = gl ? solveGraph(gl.g) : {err:"?"};
+      if(sol.err){
+        const b = document.createElement("div");
+        b.className = "blank"; b.textContent = "a graph, not finished";
+        body.appendChild(b);
+      } else {
+        const cv = document.createElement("canvas"); cv.className = "gplot";
+        body.appendChild(cv);
+        requestAnimationFrame(() => {
+          if(cv.isConnected) drawPlot(cv, sol, gl.g.win || windowFor(sol), {small:true});
+        });
+      }
+      row.append(g, body);
+      host.appendChild(row);
+      return;
+    }
     const f = document.createElement("span"); f.className = "field";
     const parsed = parseTex(t);
     link(parsed.list, null);
@@ -3145,10 +4376,38 @@ function updateTile(id){
   if(flushTimer) return;
   flushTimer = setTimeout(flushTiles, Math.max(0, REFRESH_MS - (Date.now() - lastFlush)));
 }
+/* A student publishes every eight seconds while their tab is open. Miss a few
+   of those and they are not in the room any more — a laptop shut, a browser
+   quit, a network gone. The wall shows who is here, not who once was, so the
+   tile goes rather than sitting there looking like an absent student's work.
+   Firebase removes a board on a clean disconnect; this catches everything
+   else, and it is also what stops a leftover board ever being drawn. */
+let PRESENT_MS = 30000;
 function refreshAges(){
+  const now = sync && sync.now ? sync.now() : Date.now();
+  let dropped = false;
+  for(const [id, b] of [...boards]){
+    const age = now - (b.at || 0);
+    if(age > PRESENT_MS){
+      boards.delete(id);
+      fbMap.delete(id); ckMap.delete(id);
+      if(sync && sync.drop) try{ sync.drop(id); }catch(e){}   // tidy the room too
+      dropped = true;
+      // if their panel is open, step back to the wall rather than sit on a
+      // board nobody is behind any more
+      if(editorTarget.mode === "feedback" && editorTarget.boardId === id){
+        const back = document.getElementById("actingBack");
+        if(back) back.click();
+      }
+    }
+  }
+  if(dropped) drawTiles();
   for(const [id, tile] of tileEls){
     const b = boards.get(id);
-    if(b) { tile.__ago.textContent = ago(b.at); tile.classList.toggle("stale", Date.now() - b.at > 25000); }
+    if(b){
+      tile.__ago.textContent = ago(b.at);
+      tile.classList.toggle("stale", now - b.at > 12000);
+    }
   }
 }
 
@@ -3297,6 +4556,8 @@ function paintClock(){
     if(done && timerEnd) setLocked(true);
   }
   if(done){ clearInterval(timerTick); timerTick = null; }
+  const bar = document.getElementById("composerBar");
+  if(bar && !bar.hidden) refreshComposerClock();
 }
 function startTimer(seconds){
   clearInterval(timerTick); timerTick = null;
@@ -3392,6 +4653,20 @@ function refreshComposerCount(){
   el.textContent = n ? (n === 1 ? "1 problem is up — this adds a second"
                                 : n + " problems are up — this adds another") : "";
   clr.hidden = !n;
+  refreshComposerClock();
+}
+/* Minutes left blank means "leave the clock alone", so say what that means
+   right now rather than making it a guess. */
+function refreshComposerClock(){
+  const note = document.getElementById("probTimerNote");
+  const stop = document.getElementById("probStopTimer");
+  if(!note || !stop) return;
+  const left = timerEnd - Date.now();
+  const running = timerEnd && left > 0;
+  note.textContent = running
+    ? "blank keeps the " + fmt(left) + " already running"
+    : "blank means no timer";
+  stop.hidden = !running;
 }
 function openComposer(){
   editorTarget = {mode:"problem"};
@@ -3416,12 +4691,22 @@ function closeComposer(){
 document.getElementById("tPush").addEventListener("click", openComposer);
 document.getElementById("tClose").addEventListener("click", () => {
   if(!sync) return;
-  sync.send("close", {});
+  const closing = sync;
+  closing.send("close", {});          // students clear their own screens first
   startTimer(0);
   problemItems = [];
   fbMap.clear(); ckMap.clear();
   boards.forEach(b => { b.lines = []; b.check = false; b.feedback = []; });
   drawTiles();
+  // then the room itself goes. Anyone still connected republishes their name,
+  // so the wall keeps showing who is here — with nothing on their boards.
+  setTimeout(() => { if(closing.wipe) closing.wipe(); }, 1200);
+});
+document.getElementById("probStopTimer").addEventListener("click", () => {
+  sync.send("timer", {seconds:0});
+  startTimer(0);
+  refreshComposerClock();
+  refocusEditor();
 });
 document.getElementById("probClear").addEventListener("click", () => {
   problemItems = [];
@@ -3455,8 +4740,9 @@ document.getElementById("probChipX").addEventListener("click", () => {
 
 document.getElementById("probSend").addEventListener("click", () => {
   const rows = currentLines().filter(t => t.trim());
-  const mins = parseFloat(document.getElementById("probMins").value);
-  const seconds = (mins > 0) ? Math.round(mins * 60) : 0;
+  const raw  = document.getElementById("probMins").value.trim();
+  const mins = parseFloat(raw);
+  const seconds = (raw !== "" && mins > 0) ? Math.round(mins * 60) : 0;
   if(!rows.length && !pendingImages.length && !seconds){
     document.getElementById("probMsg").textContent = "Write something, attach a file, or set a time.";
     return;
@@ -3467,8 +4753,13 @@ document.getElementById("probSend").addEventListener("click", () => {
     problemItems = problemItems.concat([{lines:rows, images:pendingImages}]);
     sync.send("problem", {items:problemItems});
   }
-  if(seconds) sync.send("timer", {seconds});
-  startTimer(seconds);                     // the sender does not hear its own message
+  // A number sets a fresh countdown for everyone. Blank leaves whatever is
+   // running alone — it used to clear the teacher's own clock while the class
+   // kept counting, so the two ends disagreed.
+  if(seconds){
+    sync.send("timer", {seconds});
+    startTimer(seconds);                   // the sender does not hear its own message
+  }
   closeComposer();
 });
 
@@ -3561,9 +4852,29 @@ document.getElementById("tSignIn").addEventListener("click", async () => {
 document.getElementById("tPass").addEventListener("keydown", e => {
   if(e.key === "Enter") document.getElementById("tSignIn").click();
 });
+/* Signing out throws the lesson away for good, so it takes two clicks. The
+   button says what the second one will do rather than opening a dialog. */
+let signOutArmed = 0;
 document.getElementById("tSignOut").addEventListener("click", async () => {
+  const btn = document.getElementById("tSignOut");
+  const disarm = () => { btn.textContent = "Sign out"; btn.classList.remove("danger"); };
+  if(Date.now() - signOutArmed > 6000){
+    signOutArmed = Date.now();
+    btn.textContent = "Erase everything?";
+    btn.classList.add("danger");
+    setTimeout(() => { if(Date.now() - signOutArmed >= 6000) disarm(); }, 6100);
+    return;
+  }
+  signOutArmed = 0; disarm();
+  btn.disabled = true;
+  const rooms = [...touchedRooms];
+  if(sync) sync.send("end", {});        // send the class back to the join screen
+  await new Promise(r => setTimeout(r, 900));
+  await wipeRooms(rooms);
+  touchedRooms.clear();
   leave();
   await signOutTeacher();
+  btn.disabled = false;
 });
 document.getElementById("tCopy").addEventListener("click", e => {
   const f = document.getElementById("tLink");
@@ -3610,6 +4921,10 @@ window.__chalkboard = {
   join, leave, currentLines, loadLines,
   boards: () => [...boards.values()],
   problems: () => problemItems,
+  presence: ms => { if(ms) PRESENT_MS = ms; return PRESENT_MS; },
+  graph: () => ({evalNum, evalPt, evalNode, numOf, solveGraph, windowFor,
+                 FAMILIES, addGraphLine, NONEVAL, focusField, gField: () => gField}),
+  sweep: () => refreshAges(),
   target: () => editorTarget.mode
 };
 
