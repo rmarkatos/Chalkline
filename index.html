@@ -1402,6 +1402,10 @@ function render(){
   });
   fitDelims();
   updateTex();
+  // A note lives in the work panel, which render() does not touch. Without
+  // this it only redrew when the student happened to publish — so typing
+  // showed nothing until they did, and the palette appeared to do nothing.
+  if(gField && gField.note) drawWorkPanel();
   schedulePublish();
 }
 
@@ -1424,7 +1428,7 @@ function fieldKey(e){
   if(gField.note){
     if(e.key === "Enter" || e.key === "Escape"){
       e.preventDefault(); saveNote(gField.k); gField = null;
-      drawWorkPanel(); schedulePublish(); refocusEditor();
+      workStale = false; drawWorkPanel(); schedulePublish(); refocusEditor();
       return true;
     }
     return false;                      // every other key is ordinary typing
@@ -2435,8 +2439,12 @@ PALETTE.forEach(([title, cols, items]) => {
     b.addEventListener("mousedown", e => {
       e.preventDefault();
       if(isLocked()) return;
-      const ln = curLine();
-      if(!ln || ln.kind !== "math") return;
+      // a feature box or a note is a maths field too, and the caret is
+      // already pointing into it
+      if(!gField){
+        const ln = curLine();
+        if(!ln || ln.kind !== "math") return;
+      }
       it.act();
       render();
       hidden.focus();
@@ -2960,10 +2968,11 @@ document.addEventListener("pointerdown", e => {
   if(!gField) return;
   const t = e.target;
   if(t && t.closest && (t.closest(".gbox") || t.closest(".gnone") || t.closest(".palette"))) return;
+  const wasNote = gField.note;
   gField = null;
   // redraw AFTER the click has landed: rebuilding the board underneath a
   // half-finished click swallows it, which ate the Graph button
-  setTimeout(render, 0);
+  setTimeout(() => { render(); if(wasNote){ workStale = false; drawWorkPanel(); } }, 0);
 }, true);
 document.addEventListener("pointerdown", keepFocus);
 document.addEventListener("mousedown", keepFocus);
@@ -4586,8 +4595,13 @@ function openBoard(id){
   showScreen("board");
 }
 /* their work keeps updating underneath while feedback is being written */
+let workStale = false;
 function refreshOpenBoard(id){
   if(editorTarget.mode !== "feedback" || editorTarget.boardId !== id) return;
+  // Rebuilding the panel while a note is being written destroys the box under
+  // the caret and restarts its blink, which reads as lag. The student's work
+  // catches up the moment the note is finished.
+  if(gField && gField.note){ workStale = true; return; }
   drawWorkPanel();
 }
 
