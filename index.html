@@ -482,6 +482,43 @@ button{font:inherit;color:inherit}
 #probSend{margin-left:auto}
 
 
+/* ---------- a note pinned to one line of work ---------- */
+/* the work panel is for reading, so its rows are tighter than the board's */
+/* the work panel's own line rule is more specific, so match it and add the
+   third column the note button lives in */
+.worklines .line.wrow{
+  grid-template-columns:22px minmax(0,1fr) auto; gap:6px;
+  align-items:start; min-height:0; padding:3px 0;
+}
+.wrow .gutter{height:auto; margin-top:3px}
+.wrow .linebody{min-height:0; padding:2px 0; display:block; overflow:visible}
+.wrow .field{display:inline-flex; align-items:center}
+.wnote{display:flex; align-items:center; gap:7px; margin:2px 0 4px 4px}
+.wnote>i{color:var(--slot); font-style:normal; font-size:14px; flex:none}
+.wnotebox{
+  display:inline-flex; align-items:center; min-height:1.7em; min-width:5em;
+  border:1px dashed var(--slot); background:var(--slot-soft); color:var(--ink);
+  border-radius:5px; padding:2px 10px; cursor:text;
+  font-family:"STIX Two Text",Georgia,serif; font-size:16px;
+}
+.wnote.here .wnotebox{border-style:solid; box-shadow:0 0 0 2px var(--accent-soft)}
+.wnote.mine .wnotebox{cursor:default}
+.wnotex{
+  border:0; background:none; color:var(--muted); cursor:pointer;
+  font-size:15px; line-height:1; padding:2px 4px;
+}
+.wnotex:hover{color:var(--slot)}
+.wadd{
+  flex:none; align-self:flex-start; margin-top:3px;
+  border:1px solid var(--line); background:var(--surface); color:var(--muted);
+  border-radius:5px; padding:3px 9px; cursor:pointer;
+  font:500 11px "IBM Plex Sans",system-ui; letter-spacing:.05em;
+  text-transform:uppercase; opacity:0; transition:opacity .12s;
+}
+.wrow:hover .wadd, .wadd.on{opacity:1}
+.wadd:hover{border-color:var(--slot); color:var(--slot)}
+.wadd.on{border-color:var(--slot); color:var(--slot); background:var(--slot-soft)}
+
 /* ---------- graphing ---------- */
 /* the plot on the left, the features stacked in a column beside it */
 .gline{display:flex; gap:24px; align-items:flex-start; padding:12px 0 16px}
@@ -840,6 +877,12 @@ let holdPublish = false;
    three questions on screen at once; "Close the board" is what clears them. */
 let problemItems = [];
 let stripDrawn = null;
+/* Notes pinned to single lines of a student's work. Declared here with the
+   rest of the shared state because render() runs long before the sharing
+   section below is reached. */
+const noteMap = {};        // boardId -> {lineId: latex}, what the teacher wrote
+const noteTree = {};       // lineId -> live node list while one is being typed
+let myNotes = {};          // a student's own notes, by their own line id
 /* =========================================================================
    1. MODEL
    A math expression is a LIST of NODES. A node with sub-expressions holds
@@ -1329,6 +1372,19 @@ function render(){
       body.appendChild(inp);
     }
 
+    // a note the teacher pinned to this line
+    const note = myNotes && myNotes[ln.id];
+    if(note){
+      const n = document.createElement("div");
+      n.className = "wnote mine";
+      const mark = document.createElement("i"); mark.textContent = "↳";
+      const box = document.createElement("span"); box.className = "wnotebox";
+      const pp = parseTex(String(note)); link(pp.list, null);
+      box.appendChild(renderList(pp.list, false));
+      n.append(mark, box);
+      body.appendChild(n);
+    }
+
     const del = document.createElement("button");
     del.className = "linedel";
     del.title = "Delete line";
@@ -1347,6 +1403,7 @@ function render(){
 function graphLineOf(id){ return lines.find(l => l.id === id); }
 function syncField(){
   if(!gField) return;
+  if(gField.note){ saveNote(gField.k); schedulePublish(); return; }
   const ln = graphLineOf(gField.id);
   if(!ln){ gField = null; return; }
   const before = ln.g.f[gField.k];
@@ -1358,6 +1415,14 @@ function syncField(){
    already works because "cur" is pointing at the field's own node list. */
 function fieldKey(e){
   if(!gField) return false;
+  if(gField.note){
+    if(e.key === "Enter" || e.key === "Escape"){
+      e.preventDefault(); saveNote(gField.k); gField = null;
+      drawWorkPanel(); schedulePublish(); refocusEditor();
+      return true;
+    }
+    return false;                      // every other key is ordinary typing
+  }
   const ln = graphLineOf(gField.id);
   if(!ln){ gField = null; return false; }
   if(e.key === "Tab"){
@@ -3523,6 +3588,36 @@ let gField = null;                 // {id, k}
 
 /* Each field keeps a live node list while it is being worked on, so the caret
    has something stable to sit in across re-renders. */
+/* A note on one line of a student's work. Same in-place editor as a graph's
+   feature boxes — it is the same problem: a node list that is not a board
+   line, edited with the ordinary keyboard and palette. */
+function noteTreeFor(lineId){
+  if(!noteTree[lineId]){
+    const raw = (noteMap[editorTarget.boardId] || {})[lineId] || "";
+    const t = L();
+    if(raw) t.push(...parseTex(raw).list);
+    link(t, null);
+    noteTree[lineId] = t;
+  }
+  return noteTree[lineId];
+}
+function saveNote(lineId){
+  const t = noteTree[lineId];
+  if(!t || !editorTarget.boardId) return;
+  const bag = noteMap[editorTarget.boardId] = noteMap[editorTarget.boardId] || {};
+  const tex = texList(t);
+  if(tex.trim()) bag[lineId] = tex; else delete bag[lineId];
+}
+function focusNote(lineId){
+  const t = noteTreeFor(lineId);
+  gField = {note:true, k:lineId};
+  cur = {list:t, i:t.length};
+  sel = null; pending = null; textMode = false;
+  relink();
+  drawWorkPanel();
+  hidden.focus();
+}
+
 function fieldTree(ln, k){
   ln.gt = ln.gt || {};
   if(!ln.gt[k]){
@@ -3907,9 +4002,11 @@ function FirebaseSync(room, role){
     if(type === "board"){
       const r = d.ref(db, R + "/boards/" + uid);
       d.onDisconnect(r).remove();             // close the tab, leave the wall
-      W("your board", d.set(r, {name:p.name || "student", lines:p.lines || [], at:d.serverTimestamp()}));
+      W("your board", d.set(r, {name:p.name || "student", lines:p.lines || [],
+                                ids:p.ids || [], at:d.serverTimestamp()}));
     }
-    else if(type === "feedback") W("feedback", d.set(d.ref(db, R + "/feedback/" + p.id), {lines:p.lines || []}));
+    else if(type === "feedback") W("feedback", d.set(d.ref(db, R + "/feedback/" + p.id),
+                                       {lines:p.lines || [], notes:p.notes || {}}));
     else if(type === "check")    W("the checkmark", d.set(d.ref(db, R + "/checks/" + p.id), !!p.on));
     else if(type === "problem")  W("the problem", d.set(d.ref(db, R + "/problem"),
                                        {items:p.items || [], at:d.serverTimestamp()}));
@@ -3972,7 +4069,8 @@ function FirebaseSync(room, role){
       // the whole node, so feedback written before this page was opened is
       // there when a panel is reopened, instead of a blank slate
       const fbRef = d.ref(db, R + "/feedback");
-      const fbMsg = s => fire("feedback", {id:s.key, lines:(s.val() || {}).lines || []});
+      const fbMsg = s => fire("feedback", {id:s.key, lines:(s.val() || {}).lines || [],
+                                          notes:(s.val() || {}).notes || {}});
       d.onChildAdded(fbRef, fbMsg, E("feedback"));
       d.onChildChanged(fbRef, fbMsg, E("feedback"));
       d.onChildRemoved(fbRef, s => fire("feedback", {id:s.key, lines:[]}), E("feedback"));
@@ -3984,7 +4082,8 @@ function FirebaseSync(room, role){
       d.onChildRemoved(ckRef, s => fire("check", {id:s.key, on:false}), E("checks"));
     } else {
       d.onValue(d.ref(db, R + "/feedback/" + uid),
-        s => fire("feedback", {id:uid, lines:(s.val() || {}).lines || []}), E("your feedback"));
+        s => fire("feedback", {id:uid, lines:(s.val() || {}).lines || [],
+                               notes:(s.val() || {}).notes || {}}), E("your feedback"));
       d.onValue(d.ref(db, R + "/checks/" + uid),
         s => fire("check", {id:uid, on: !!s.val()}), E("your checkmark"));
     }
@@ -4069,6 +4168,10 @@ function showScreen(name){
 function currentLines(){
   return lines.map(l => l.kind === "graph" ? graphToText(l) : texList(l.root));
 }
+/* Every line carries an id so a note can be pinned to THAT line and stay
+   there when the student adds work above it. Ids are per-session, like
+   everything else here: a reload starts the conversation over. */
+function currentIds(){ return lines.map(l => l.id); }
 function loadLines(arr){
   const src = asLines(arr);
   lines = (src.length ? src : [""]).map(t => {
@@ -4105,9 +4208,11 @@ function schedulePublish(){
 function publishNow(){
   if(!sync) return;
   if(editorTarget.mode === "student"){
-    sync.send("board", {id:myId, name:myName, lines:currentLines(), at:Date.now()});
+    sync.send("board", {id:myId, name:myName, lines:currentLines(),
+                        ids:currentIds(), at:Date.now()});
   } else if(editorTarget.mode === "feedback"){
-    sync.send("feedback", {id:editorTarget.boardId, lines:currentLines()});
+    sync.send("feedback", {id:editorTarget.boardId, lines:currentLines(),
+                           notes:noteMap[editorTarget.boardId] || {}});
   }
 }
 
@@ -4139,7 +4244,9 @@ function join(asRole, room, name){
     sync.on("feedback", m => {
       if(m.id !== myId) return;
       myFeedback = asLines(m.lines);
+      myNotes = (m.notes && typeof m.notes === "object") ? m.notes : {};
       showFeedback();
+      render();                       // the notes sit beside the lines they are about
     });
     sync.on("check", m => {
       if(m.id !== myId) return;
@@ -4150,7 +4257,7 @@ function join(asRole, room, name){
     sync.on("close", m => {
       if(m && m.ended){ leave(); return; }     // the teacher ended the session
       startTimer(0);
-      problemItems = []; stripDrawn = null; myFeedback = []; myCheck = false;
+      problemItems = []; stripDrawn = null; myFeedback = []; myNotes = {}; myCheck = false;
       showStrip(); showFeedback(); showTick();
       loadLines([]);
       flashBoard();
@@ -4179,7 +4286,7 @@ function join(asRole, room, name){
       }
       const prev = boards.get(m.id) || {};
       boards.set(m.id, {id:m.id, name:m.name || "student", lines:asLines(m.lines),
-                        at:m.at || Date.now(),
+                        ids:asLines(m.ids), at:m.at || Date.now(),
                         feedback: fbMap.get(m.id) || prev.feedback || [],
                         check: ckMap.has(m.id) ? ckMap.get(m.id) : !!prev.check});
       if(editorTarget.mode === "feedback") refreshOpenBoard(m.id);
@@ -4194,6 +4301,9 @@ function join(asRole, room, name){
     // the wall no longer loses it
     sync.on("feedback", m => {
       const lines = asLines(m.lines);
+      if(m.notes && typeof m.notes === "object" &&
+         !(editorTarget.mode === "feedback" && editorTarget.boardId === m.id))
+        noteMap[m.id] = Object.assign({}, m.notes);
       fbMap.set(m.id, lines);
       const b = boards.get(m.id);
       if(b) b.feedback = lines;
@@ -4421,7 +4531,7 @@ function openBoard(id){
   document.getElementById("leaveBtn").hidden = true;
   document.getElementById("workWho").textContent = b.name;
   document.getElementById("workPanel").hidden = false;
-  renderStatic(document.getElementById("workLines"), b.lines);
+  drawWorkPanel();
   document.getElementById("actingCheck").classList.toggle("checked", !!b.check);
   document.querySelector("#viewBoard .brand .tag").textContent = b.name + " · " + myRoom;
   holdPublish = true;
@@ -4431,8 +4541,95 @@ function openBoard(id){
 /* their work keeps updating underneath while feedback is being written */
 function refreshOpenBoard(id){
   if(editorTarget.mode !== "feedback" || editorTarget.boardId !== id) return;
-  const b = boards.get(id);
-  if(b) renderStatic(document.getElementById("workLines"), b.lines);
+  drawWorkPanel();
+}
+
+/* The student's work, with a note beside any line the teacher wants to talk
+   about. A note is pinned to the line's own id, so it stays with that line
+   when the student writes more above it. */
+function drawWorkPanel(){
+  const host = document.getElementById("workLines");
+  if(!host) return;
+  const b = boards.get(editorTarget.boardId);
+  host.textContent = "";
+  if(!b) return;
+  const rows = asLines(b.lines);
+  const ids  = asLines(b.ids);
+  const bag  = noteMap[b.id] || {};
+  if(!rows.filter(t => t.trim()).length){
+    const e = document.createElement("div");
+    e.className = "blank"; e.textContent = "empty board";
+    host.appendChild(e);
+    return;
+  }
+  rows.forEach((t, i) => {
+    const lineId = ids[i] || ("i" + i);
+    const row = document.createElement("div"); row.className = "line wrow";
+
+    const g = document.createElement("div"); g.className = "gutter";
+    const n = document.createElement("b"); n.textContent = i + 1; g.appendChild(n);
+
+    const body = document.createElement("div"); body.className = "linebody";
+    const f = document.createElement("span"); f.className = "field";
+    if(isGraphText(t)){
+      const gl = graphFromText(t);
+      const sol = gl ? solveGraph(gl.g) : {err:"?"};
+      const tag = document.createElement("span");
+      tag.className = "blank";
+      tag.textContent = sol.err || !sol.fn ? "a graph, not finished" : "a graph";
+      f.appendChild(tag);
+    } else {
+      const parsed = parseTex(t);
+      link(parsed.list, null);
+      f.appendChild(renderList(parsed.list, false));
+    }
+    body.appendChild(f);
+
+    const here = !!(gField && gField.note && gField.k === lineId);
+    const has = !!bag[lineId];
+    if(here || has){
+      const note = document.createElement("div");
+      note.className = "wnote" + (here ? " here" : "");
+      const mark = document.createElement("i"); mark.textContent = "↳";
+      note.appendChild(mark);
+      const box = document.createElement("span");
+      box.className = "wnotebox";
+      if(here) box.appendChild(renderList(noteTreeFor(lineId), true));
+      else { const pp = parseTex(bag[lineId]); link(pp.list, null);
+             box.appendChild(renderList(pp.list, false)); }
+      box.addEventListener("mousedown", e => {
+        e.preventDefault(); e.stopPropagation(); focusNote(lineId);
+      });
+      note.appendChild(box);
+      if(has){
+        const x = document.createElement("button");
+        x.type = "button"; x.className = "wnotex"; x.textContent = "×";
+        x.title = "remove this note";
+        x.addEventListener("click", ev => {
+          ev.stopPropagation();
+          delete (noteMap[b.id] || {})[lineId];
+          delete noteTree[lineId];
+          if(gField && gField.note && gField.k === lineId) gField = null;
+          drawWorkPanel(); schedulePublish(); refocusEditor();
+        });
+        note.appendChild(x);
+      }
+      body.appendChild(note);
+    }
+
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "wadd" + (has || here ? " on" : "");
+    add.textContent = has || here ? "note" : "+ note";
+    add.title = "write a note on this line";
+    add.addEventListener("mousedown", e => {
+      e.preventDefault(); e.stopPropagation(); focusNote(lineId);
+    });
+
+    row.append(g, body, add);
+    host.appendChild(row);
+  });
+  fitDelims(host);
 }
 document.getElementById("actingCheck").addEventListener("click", () => {
   if(editorTarget.mode !== "feedback") return;
@@ -4445,6 +4642,9 @@ document.getElementById("actingCheck").addEventListener("click", () => {
   refocusEditor();
 });
 document.getElementById("actingBack").addEventListener("click", () => {
+  if(gField && gField.note){ saveNote(gField.k); schedulePublish(); }
+  gField = null;
+  for(const k in noteTree) delete noteTree[k];
   editorTarget = {mode:"idle"};
   document.getElementById("actingBar").hidden = true;
   document.getElementById("workPanel").hidden = true;
@@ -4696,6 +4896,8 @@ document.getElementById("tClose").addEventListener("click", () => {
   startTimer(0);
   problemItems = [];
   fbMap.clear(); ckMap.clear();
+  for(const k in noteMap) delete noteMap[k];
+  for(const k in noteTree) delete noteTree[k];
   boards.forEach(b => { b.lines = []; b.check = false; b.feedback = []; });
   drawTiles();
   // then the room itself goes. Anyone still connected republishes their name,
