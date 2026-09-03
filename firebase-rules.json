@@ -23,8 +23,8 @@
   "rules": {
     "rooms": {
       "$room": {
-        ".read":  "auth.token.email === 'rmarkatos319@gmail.com'",   // TEACHER
-        ".write": "auth.token.email === 'rmarkatos319@gmail.com'",   // TEACHER
+        ".read":  "auth.token.email === 'you@example.com'",   // TEACHER
+        ".write": "auth.token.email === 'you@example.com'",   // TEACHER
 
         "boards": {
           "$id": {
