@@ -21,6 +21,11 @@ for f in test.js test-text.js test-raw.js test-parser.js test-focus.js \
   [ -z "$line" ] && line="$(printf '%s' "$out" | grep -c '\[PASS\]') passed, $(printf '%s' "$out" | grep -c '\[FAIL\]') failed"
   case "$line" in
     *" 0 failed"*|*"ALL ROUND-TRIPS CLEAN"*) mark="ok  ";;
+    # suites that report "N/N passed" are green only when the two agree,
+    # so 18/18 passes and 17/18 still fails
+    */*" passed")
+        n=${line%%/*}; d=${line#*/}; d=${d%% *}
+        if [ -n "$n" ] && [ "$n" = "$d" ]; then mark="ok  "; else mark="FAIL"; bad=1; fi;;
     *) mark="FAIL"; bad=1;;
   esac
   # a suite that printed nothing usable has fallen over

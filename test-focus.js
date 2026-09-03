@@ -27,6 +27,9 @@ const URL = F('chalkline-board.html');
 
   // 2. clicking the board's empty padding
   await p.click('#clearAll'); await p.keyboard.type('x^2');
+  // the app re-arms focus while keys are still in flight, so let typing settle
+  // before blurring — without this the next check races and fails ~1 run in 5
+  await p.waitForTimeout(80);
   await p.evaluate(()=>document.getElementById('hidden').blur());
   chk('blur really drops focus', !(await armed()));
   const box = await p.locator('.board').boundingBox();

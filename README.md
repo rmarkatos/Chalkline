@@ -3,7 +3,7 @@
 A shared whiteboard for live online maths classes, built around an equation
 editor students can actually use.
 
-**Live:** https://rmarkatos.github.io/Chalkline/
+**Live:** https://chalklineschool.com/
 
 ## To change something
 

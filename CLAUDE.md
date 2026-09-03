@@ -8,7 +8,7 @@ Built for Ryan Markatos, who teaches Honors Algebra II & Trig and AP Calculus
 over Zoom. The whole point is the equation editor: LaTeX is the right way to
 write mathematics, but making students learn LaTeX is not an option.
 
-Live at **https://rmarkatos.github.io/Chalkline/**
+Live at **https://chalklineschool.com/**
 
 ---
 
