@@ -657,6 +657,12 @@ button{font:inherit;color:inherit}
   max-height:34vh; overflow:auto; box-shadow:0 6px 24px rgba(0,0,0,.35)
 }
 #errBar b{display:block; font:600 13px system-ui; margin-bottom:4px}
+.errbtn{
+  margin-top:9px; border:1px solid #e0a458; background:#4a2f16; color:#ffe3c2;
+  border-radius:6px; padding:5px 14px; cursor:pointer;
+  font:500 12px "IBM Plex Sans",system-ui;
+}
+.errbtn:hover{background:#5c3a1b}
 #errBar .x{position:absolute; top:6px; right:8px; background:none; border:0;
   color:#ffe3c2; font-size:18px; cursor:pointer; line-height:1}
 .conn{
@@ -3868,8 +3874,17 @@ function LocalSync(room){
    throws used to leave the page looking connected but doing nothing; now it
    says so on screen, in words that can be read back over Zoom. */
 const seenErrors = new Set();
+function plainly(err){
+  const raw = ((err && (err.code || err.message)) || String(err));
+  if(/dynamically imported module|Failed to fetch|NetworkError/i.test(raw))
+    return "could not download the Firebase code — the internet connection dropped, " +
+           "or something on this computer is blocking www.gstatic.com. Reload and try again.";
+  if(/PERMISSION_DENIED/i.test(raw))
+    return "the database refused that (PERMISSION_DENIED)";
+  return raw;
+}
 function reportError(where, err){
-  const msg = where + ": " + ((err && (err.code || err.message)) || String(err));
+  const msg = where + ": " + plainly(err);
   if(seenErrors.has(msg)) return;
   seenErrors.add(msg);
   const bar = document.getElementById("errBar");
@@ -3878,6 +3893,16 @@ function reportError(where, err){
   const row = document.createElement("div");
   row.textContent = msg;
   list.appendChild(row);
+  // A browser remembers a failed module fetch for the life of the page, so no
+  // amount of trying again will work — only a reload will. Offer one.
+  if(/could not download the Firebase code/.test(msg) &&
+     !document.getElementById("errReload")){
+    const b = document.createElement("button");
+    b.id = "errReload"; b.className = "errbtn"; b.type = "button";
+    b.textContent = "Reload the page";
+    b.addEventListener("click", () => location.reload());
+    list.appendChild(b);
+  }
   bar.hidden = false;
 }
 window.addEventListener("error", e => reportError("script", e.error || e.message));
@@ -3902,7 +3927,7 @@ document.addEventListener("click", e => {
 let fbReady = null;
 function ensureFirebase(){
   if(fbReady) return fbReady;
-  fbReady = (async () => {
+  const attempt = (async () => {
     const [appMod, dbMod, authMod] = await Promise.all([
       import(FB_SDK + "firebase-app.js"),
       import(FB_SDK + "firebase-database.js"),
@@ -3912,7 +3937,12 @@ function ensureFirebase(){
     return {D:dbMod, U:authMod, app,
             auth: authMod.getAuth(app), db: dbMod.getDatabase(app)};
   })();
-  return fbReady;
+  // Only a SUCCESSFUL start-up is remembered. Caching a failure meant that one
+  // bad moment on the network left the page unable to connect until it was
+  // reloaded, however many times you tried.
+  attempt.catch(() => { if(fbReady === attempt) fbReady = null; });
+  fbReady = attempt;
+  return attempt;
 }
 
 let authUser = null;                 // the signed-in Firebase user, once known
@@ -3957,6 +3987,9 @@ const touchedRooms = new Set();
 async function wipeRooms(rooms){
   if(!FIREBASE_CONFIG.apiKey) return;
   const F = await ensureFirebase();
+  // only a signed-in teacher may erase a room; asking without that is not a
+  // fault worth reporting, it just means there is nothing we are allowed to do
+  if(!signedInTeacher()) return;
   for(const r of rooms){
     try{ await F.D.remove(F.D.ref(F.db, "rooms/" + r)); }
     catch(e){ reportError("erasing " + r, e); }
@@ -3977,7 +4010,13 @@ function FirebaseSync(room, role){
   const handlers = {};
   const queue = [];
   let d = null, db = null, uid = null, offset = 0, dead = false;
-  let lastClosed = 0;
+  let lastClosed = 0, sawClosed = false;
+  // Firebase hands back an unsubscribe for every listener. Dropping them on
+  // the floor meant that after signing out the page kept asking for
+  // teacher-only data with no credentials, and the banner filled up with
+  // PERMISSION_DENIED for reads nobody had asked for any more.
+  const off = [];
+  const keep = u => { if(typeof u === "function") off.push(u); return u; };
   const readyCbs = [];
   const R = "rooms/" + room;
 
@@ -4041,7 +4080,7 @@ function FirebaseSync(room, role){
     d   = F.D;
 
     // every device counts the clock down from the same instant
-    d.onValue(d.ref(db, ".info/serverTimeOffset"), s => { offset = s.val() || 0; });
+    keep(d.onValue(d.ref(db, ".info/serverTimeOffset"), s => { offset = s.val() || 0; }));
     // If the teacher's tab closes, crashes or drops off the network, the room
     // goes with it. On coming back the app republishes what it still holds,
     // so a flaky minute of wifi does not cost the lesson.
@@ -4062,42 +4101,46 @@ function FirebaseSync(room, role){
     // Only the teacher may read the wall, or anyone's feedback but their own.
     if(role === "teacher"){
       const boards = d.ref(db, R + "/boards");
-      d.onChildAdded(boards,   s => fire("board", Object.assign({id:s.key}, s.val())), E("the wall"));
-      d.onChildChanged(boards, s => fire("board", Object.assign({id:s.key}, s.val())), E("the wall"));
-      d.onChildRemoved(boards, s => fire("gone", {id:s.key}), E("the wall"));
+      keep(d.onChildAdded(boards,   s => fire("board", Object.assign({id:s.key}, s.val())), E("the wall")));
+      keep(d.onChildChanged(boards, s => fire("board", Object.assign({id:s.key}, s.val())), E("the wall")));
+      keep(d.onChildRemoved(boards, s => fire("gone", {id:s.key}), E("the wall")));
 
       // the whole node, so feedback written before this page was opened is
       // there when a panel is reopened, instead of a blank slate
       const fbRef = d.ref(db, R + "/feedback");
       const fbMsg = s => fire("feedback", {id:s.key, lines:(s.val() || {}).lines || [],
                                           notes:(s.val() || {}).notes || {}});
-      d.onChildAdded(fbRef, fbMsg, E("feedback"));
-      d.onChildChanged(fbRef, fbMsg, E("feedback"));
-      d.onChildRemoved(fbRef, s => fire("feedback", {id:s.key, lines:[]}), E("feedback"));
+      keep(d.onChildAdded(fbRef, fbMsg, E("feedback")));
+      keep(d.onChildChanged(fbRef, fbMsg, E("feedback")));
+      keep(d.onChildRemoved(fbRef, s => fire("feedback", {id:s.key, lines:[]}), E("feedback")));
 
       const ckRef = d.ref(db, R + "/checks");
       const ckMsg = s => fire("check", {id:s.key, on: !!s.val()});
-      d.onChildAdded(ckRef, ckMsg, E("checks"));
-      d.onChildChanged(ckRef, ckMsg, E("checks"));
-      d.onChildRemoved(ckRef, s => fire("check", {id:s.key, on:false}), E("checks"));
+      keep(d.onChildAdded(ckRef, ckMsg, E("checks")));
+      keep(d.onChildChanged(ckRef, ckMsg, E("checks")));
+      keep(d.onChildRemoved(ckRef, s => fire("check", {id:s.key, on:false}), E("checks")));
     } else {
-      d.onValue(d.ref(db, R + "/feedback/" + uid),
+      keep(d.onValue(d.ref(db, R + "/feedback/" + uid),
         s => fire("feedback", {id:uid, lines:(s.val() || {}).lines || [],
-                               notes:(s.val() || {}).notes || {}}), E("your feedback"));
-      d.onValue(d.ref(db, R + "/checks/" + uid),
-        s => fire("check", {id:uid, on: !!s.val()}), E("your checkmark"));
+                               notes:(s.val() || {}).notes || {}}), E("your feedback")));
+      keep(d.onValue(d.ref(db, R + "/checks/" + uid),
+        s => fire("check", {id:uid, on: !!s.val()}), E("your checkmark")));
     }
-    d.onValue(d.ref(db, R + "/problem"), s => fire("problem", {items:asProblems(s.val())}),
-              E("the problem"));
-    d.onValue(d.ref(db, R + "/timer"), s => {
+    keep(d.onValue(d.ref(db, R + "/problem"), s => fire("problem", {items:asProblems(s.val())}),
+              E("the problem")));
+    keep(d.onValue(d.ref(db, R + "/timer"), s => {
       const v = s.val();
       if(!v || !v.endsAt) return fire("timer", {seconds:0});
       fire("timer", {seconds: Math.max(0, Math.round((v.endsAt - (Date.now() + offset)) / 1000))});
-    });
-    d.onValue(d.ref(db, R + "/closed"), s => {
+    }));
+    keep(d.onValue(d.ref(db, R + "/closed"), s => {
       const t = s.val() || 0;
+      // Whatever is sitting in "closed" when we arrive is history, not an
+      // instruction: a student joining a room that was ended last lesson was
+      // being thrown straight back out by it.
+      if(!sawClosed){ sawClosed = true; lastClosed = t; return; }
       if(t && t !== lastClosed){ lastClosed = t; fire("close", {ended: t < 0}); }
-    });
+    }));
 
     readyCbs.forEach(f => f(uid));
     queue.splice(0).forEach(([t, p]) => doSend(t, p));
@@ -4113,6 +4156,10 @@ function FirebaseSync(room, role){
     ready(fn){ uid ? fn(uid) : readyCbs.push(fn); },
     close(){
       dead = true;
+      // stop listening BEFORE anything else: a listener left attached after
+      // the credentials go is a stream of PERMISSION_DENIED for data nobody
+      // is waiting for any more
+      off.splice(0).forEach(u => { try{ u(); }catch(e){} });
       if(d && uid) try{ d.remove(d.ref(db, R + "/boards/" + uid)); }catch(e){}
     },
     wipe(){ if(d) return d.remove(d.ref(db, R)); },
@@ -5072,9 +5119,9 @@ document.getElementById("tSignOut").addEventListener("click", async () => {
   const rooms = [...touchedRooms];
   if(sync) sync.send("end", {});        // send the class back to the join screen
   await new Promise(r => setTimeout(r, 900));
-  await wipeRooms(rooms);
+  await wipeRooms(rooms);               // still signed in, so this is allowed
   touchedRooms.clear();
-  leave();
+  leave();                              // detaches every listener
   await signOutTeacher();
   btn.disabled = false;
 });
@@ -5124,8 +5171,9 @@ window.__chalkboard = {
   boards: () => [...boards.values()],
   problems: () => problemItems,
   presence: ms => { if(ms) PRESENT_MS = ms; return PRESENT_MS; },
+  ensure: ensureFirebase,
   graph: () => ({evalNum, evalPt, evalNode, numOf, solveGraph, windowFor,
-                 FAMILIES, addGraphLine, NONEVAL, focusField, gField: () => gField}),
+                 FAMILIES, addGraphLine, NONEVAL, focusField, gField: () => gField, ensure: ensureFirebase}),
   sweep: () => refreshAges(),
   target: () => editorTarget.mode
 };
