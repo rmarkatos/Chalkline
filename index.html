@@ -373,6 +373,12 @@ button{font:inherit;color:inherit}
   box-shadow:var(--shadow); padding:30px 30px 24px; width:min(440px,100%);
 }
 .join h1{margin:0; font-size:26px; letter-spacing:-.02em}
+.ver{
+  display:inline-block; margin-left:8px; padding:1px 7px; border-radius:10px;
+  border:1px solid var(--line); color:var(--muted);
+  font:500 11px "IBM Plex Mono",ui-monospace,monospace; letter-spacing:.04em;
+  vertical-align:2px;
+}
 .joinsub{margin:2px 0 22px; color:var(--muted); font-size:14px}
 .fld{display:block; margin-bottom:14px}
 .fld span{
@@ -656,6 +662,16 @@ button{font:inherit;color:inherit}
   padding:10px 40px 10px 12px; font:12.5px/1.5 ui-monospace,Menlo,monospace;
   max-height:34vh; overflow:auto; box-shadow:0 6px 24px rgba(0,0,0,.35)
 }
+#fileWarn{
+  background:#3a2412; color:#ffe3c2; border-bottom:1px solid #e0a458;
+  padding:12px 20px; font:13px/1.5 -apple-system,system-ui,sans-serif;
+}
+#fileWarn b{display:block; font:600 14px system-ui; margin-bottom:5px}
+#fileWarn p{margin:0 0 8px}
+#fileWarn code{
+  font:13px ui-monospace,Menlo,monospace; background:#4a2f16;
+  padding:3px 9px; border-radius:5px; display:inline-block;
+}
 #errBar b{display:block; font:600 13px system-ui; margin-bottom:4px}
 .errbtn{
   margin-top:9px; border:1px solid #e0a458; background:#4a2f16; color:#ffe3c2;
@@ -692,10 +708,19 @@ button{font:inherit;color:inherit}
 </style>
 </head>
 <body>
+<div id="fileWarn" hidden>
+  <b>This page is running from a file on this computer, not from your website.</b>
+  <p>Firebase behaves differently here, students cannot be given a link, and two
+     tabs can end up sharing one identity &mdash; which looks like work and notes
+     leaking between students. Open the site instead:</p>
+  <code>https://rmarkatos.github.io/Chalkline/</code>
+</div>
+
 <div class="screen" id="viewLanding">
   <div class="join">
     <h1>Chalkline</h1>
-    <p class="joinsub">Typing mathematics made user friendly</p>
+    <p class="joinsub">Typing mathematics made user friendly
+      <span class="ver">v26</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -735,6 +760,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
+      <span class="ver">v26</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -764,6 +790,7 @@ button{font:inherit;color:inherit}
     <h1>Chalkline</h1>
     <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
+    <span class="ver">v26</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -5183,6 +5210,14 @@ document.getElementById("tLeave").addEventListener("click", leave);
    Note what this does NOT do: role=teacher no longer walks straight in. It
    asks for a sign-in like any other route to the teacher view, and even if
    someone got past this page the rules would hand them nothing. */
+/* Opening the downloaded file instead of the website has cost real time more
+   than once. It looks like it works — it even says "live" — but sign-in,
+   storage and the student link all behave differently. Say so, loudly. */
+if(location.protocol === "file:"){
+  const w = document.getElementById("fileWarn");
+  if(w) w.hidden = false;
+}
+
 (async function fromHash(){
   showScreen("landing");
   paintSignIn();                     // hides the sign-out button in local mode
