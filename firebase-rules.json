@@ -1,0 +1,46 @@
+{
+  /*  Chalkline database rules
+   *
+   *  Change the email address on the two lines marked TEACHER to your own,
+   *  then click Publish. Nothing else in this file needs editing.
+   *
+   *  For a second teacher, make those lines read:
+   *      "auth.token.email === 'you@example.com' || auth.token.email === 'them@example.com'"
+   *
+   *  What these say, in plain English:
+   *    - the teacher may read and write anything inside their classroom
+   *    - a student may write their own board, and nobody else's
+   *    - a student may read the problem, the timer, and their own feedback
+   *      and checkmark — never the wall, and never another student's feedback
+   *    - anonymous visitors have no email at all, so both teacher tests below
+   *      are simply false for them
+   *
+   *  A board id is the student's sign-in id followed by a tab tag, because
+   *  anonymous sign-in gives one id per browser and two tabs on one machine
+   *  would otherwise be the same student. "beginsWith" keeps that safe: an id
+   *  has to start with the id you actually signed in as.
+   */
+  "rules": {
+    "rooms": {
+      "$room": {
+        ".read":  "auth.token.email === 'rmarkatos319@gmail.com'",   // TEACHER
+        ".write": "auth.token.email === 'rmarkatos319@gmail.com'",   // TEACHER
+
+        "boards": {
+          "$id": {
+            ".write": "auth != null && $id.beginsWith(auth.uid)"
+          }
+        },
+        "feedback": {
+          "$id": { ".read": "auth != null && $id.beginsWith(auth.uid)" }
+        },
+        "checks": {
+          "$id": { ".read": "auth != null && $id.beginsWith(auth.uid)" }
+        },
+        "problem": { ".read": "auth != null" },
+        "timer":   { ".read": "auth != null" },
+        "closed":  { ".read": "auth != null" }
+      }
+    }
+  }
+}

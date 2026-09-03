@@ -1,0 +1,8 @@
+# scratch pages the test suites write beside themselves
+_*.html
+# screenshots the suites take
+shot-*.png
+node_modules/
+
+# macOS clutter
+.DS_Store

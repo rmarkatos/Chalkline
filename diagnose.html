@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chalkline connection check</title>
+<style>
+  body{font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+       margin:0;padding:24px;background:#0f1a18;color:#e8f0ed}
+  h1{font-size:19px;margin:0 0 4px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.09em;color:#8aa09a;
+     margin:26px 0 4px;font-weight:600}
+  p.sub{color:#8aa09a;margin:0 0 20px;font-size:13px}
+  .row{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid #22403a;align-items:flex-start}
+  .mark{width:22px;flex:none;font-size:16px}
+  .what{flex:1;min-width:0}
+  .what b{display:block;font-weight:600}
+  .what span{color:#8aa09a;font-size:12.5px;word-break:break-word;
+             font-family:ui-monospace,Menlo,monospace}
+  .ok{color:#5fcbb7}.bad{color:#e0a458}
+  form{margin:14px 0 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  input{font:14px/1 inherit;padding:8px 10px;border-radius:7px;border:1px solid #2c4f48;
+        background:#0b1513;color:#e8f0ed;min-width:200px}
+  button{font:14px/1 inherit;padding:9px 14px;border-radius:7px;border:1px solid #5fcbb7;
+         background:#183732;color:#bff0e6;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  #done{margin-top:22px;padding:14px;border-radius:9px;font-size:14px;display:none}
+  #done.good{background:#183732;border:1px solid #5fcbb7}
+  #done.fail{background:#2c2519;border:1px solid #e0a458}
+</style>
+</head>
+<body>
+<h1>Chalkline connection check</h1>
+<p class="sub">This page talks to your Firebase project the same way the board does,
+one step at a time, and reports exactly where it stops.</p>
+
+<h2>As a student</h2>
+<div id="outA"></div>
+
+<h2>As the teacher</h2>
+<p class="sub" id="teachIntro">Sign in with the teacher account you created in Firebase.
+Nothing is stored by this page.</p>
+<form id="creds" onsubmit="return false">
+  <input id="email" type="email" placeholder="teacher email" autocomplete="username">
+  <input id="pass" type="password" placeholder="password" autocomplete="current-password">
+  <button id="go">Check the teacher side</button>
+</form>
+<div id="outB"></div>
+<div id="done"></div>
+
+<script>
+const CONFIG = {
+  apiKey:      "AIzaSyBooVUWii4zw-rz5DS261YUtWQFpBBGQ48",
+  authDomain:  "chalkline-16530.firebaseapp.com",
+  databaseURL: "https://chalkline-16530-default-rtdb.firebaseio.com",
+  projectId:   "chalkline-16530",
+  appId:       "1:83542869148:web:0e14fc2d10f35115de9959"
+};
+const SDK  = "https://www.gstatic.com/firebasejs/12.18.0/";
+const ROOM = "DIAGNOSTIC";
+
+function step(where, name, ok, detail){
+  const r = document.createElement("div"); r.className = "row";
+  const m = document.createElement("div");
+  m.className = "mark " + (ok ? "ok" : "bad");
+  m.textContent = ok ? "✓" : "✗";
+  const w = document.createElement("div"); w.className = "what";
+  const b = document.createElement("b"); b.textContent = name;
+  const s = document.createElement("span"); s.textContent = detail || "";
+  w.append(b, s); r.append(m, w);
+  document.getElementById(where).appendChild(r);
+  return ok;
+}
+function finish(good, msg){
+  const d = document.getElementById("done");
+  d.className = good ? "good" : "fail";
+  d.textContent = msg;
+  d.style.display = "block";
+}
+/* one read, then stop listening */
+function once(D, db, path){
+  return new Promise((res, rej) => {
+    let un = null, done = false;
+    un = D.onValue(D.ref(db, path),
+      s => { done = true; if(un) un(); res(s); },
+      e => { done = true; if(un) un(); rej(e); });
+    if(done && un) un();
+  });
+}
+const refused = e => /permission|denied/i.test(((e && (e.code || e.message)) || "") + "");
+
+let F = null, studentUid = null;
+async function boot(){
+  const [a, dbm, am] = await Promise.all([
+    import(SDK + "firebase-app.js"),
+    import(SDK + "firebase-database.js"),
+    import(SDK + "firebase-auth.js")
+  ]);
+  const app = a.initializeApp(CONFIG);
+  F = {D: dbm, U: am, app, auth: am.getAuth(app), db: dbm.getDatabase(app)};
+  return F;
+}
+
+/* ---------------- the student half ---------------- */
+(async () => {
+  try{
+    await boot();
+    step("outA", "Firebase code downloaded", true, "SDK 12.18.0 · " + CONFIG.projectId);
+  }catch(e){
+    step("outA", "Firebase code downloaded", false, (e && e.message) || String(e));
+    return finish(false, "The Firebase code would not load. Check the internet connection.");
+  }
+
+  try{
+    const cred = await F.U.signInAnonymously(F.auth);
+    studentUid = cred.user.uid;
+    step("outA", "Anonymous sign-in", true, "this device is " + studentUid);
+  }catch(e){
+    step("outA", "Anonymous sign-in", false, (e.code || "") + " " + e.message);
+    return finish(false, "Students cannot sign in. In Firebase go to Authentication → Sign-in method and make sure Anonymous is Enabled.");
+  }
+
+  const D = F.D, db = F.db;
+  let ok = true;
+
+  try{
+    await D.set(D.ref(db, "rooms/" + ROOM + "/boards/" + studentUid),
+      {name:"check", lines:["x^{2}-9=0"], at: D.serverTimestamp()});
+    step("outA", "A student can write their own board", true,
+         "rooms/" + ROOM + "/boards/" + studentUid);
+  }catch(e){
+    ok = false;
+    step("outA", "A student can write their own board", false, (e.code || "") + " " + e.message);
+  }
+
+  try{
+    await D.set(D.ref(db, "rooms/" + ROOM + "/boards/SOMEONE-ELSE"), {name:"impostor", lines:[]});
+    ok = false;
+    step("outA", "A student cannot write over a classmate", false,
+         "IT WAS ALLOWED — the rules in Firebase are not the new ones");
+  }catch(e){
+    step("outA", "A student cannot write over a classmate", refused(e),
+         refused(e) ? "refused, as it should be" : ((e.code || "") + " " + e.message));
+    if(!refused(e)) ok = false;
+  }
+
+  try{
+    await once(D, db, "rooms/" + ROOM + "/boards");
+    ok = false;
+    step("outA", "A student cannot read the wall", false,
+         "IT WAS ALLOWED — a student could watch the whole class");
+  }catch(e){
+    step("outA", "A student cannot read the wall", refused(e),
+         refused(e) ? "refused, as it should be" : ((e.code || "") + " " + e.message));
+    if(!refused(e)) ok = false;
+  }
+
+  try{
+    await D.set(D.ref(db, "rooms/" + ROOM + "/problem"), {items:[], at: D.serverTimestamp()});
+    ok = false;
+    step("outA", "A student cannot push a problem", false,
+         "IT WAS ALLOWED — the rules in Firebase are not the new ones");
+  }catch(e){
+    step("outA", "A student cannot push a problem", refused(e),
+         refused(e) ? "refused, as it should be" : ((e.code || "") + " " + e.message));
+    if(!refused(e)) ok = false;
+  }
+
+  if(!ok) finish(false, "The student side is not locked down. Paste the new rules into Firebase → Realtime Database → Rules and click Publish, then reload this page.");
+})();
+
+/* ---------------- the teacher half ---------------- */
+document.getElementById("go").addEventListener("click", async () => {
+  const btn = document.getElementById("go");
+  const email = document.getElementById("email").value.trim();
+  const pass  = document.getElementById("pass").value;
+  document.getElementById("outB").textContent = "";
+  document.getElementById("done").style.display = "none";
+  if(!email || !pass) return;
+  btn.disabled = true;
+
+  const D = F.D, db = F.db;
+  try{
+    const cred = await F.U.signInWithEmailAndPassword(F.auth, email, pass);
+    step("outB", "Teacher sign-in", true, cred.user.email);
+  }catch(e){
+    btn.disabled = false;
+    step("outB", "Teacher sign-in", false, (e.code || "") + " " + e.message);
+    return finish(false, /operation-not-allowed/.test(e.code || "")
+      ? "Email sign-in is switched off. Firebase → Authentication → Sign-in method → enable Email/Password."
+      : "That account did not sign in. Check the address and password under Firebase → Authentication → Users.");
+  }
+
+  let ok = true;
+  try{
+    const s = await once(D, db, "rooms/" + ROOM + "/boards");
+    const n = s.val() ? Object.keys(s.val()).length : 0;
+    step("outB", "The teacher can read the wall", true, n + " board(s) in " + ROOM);
+  }catch(e){
+    ok = false;
+    step("outB", "The teacher can read the wall", false, (e.code || "") + " " + e.message);
+  }
+
+  try{
+    await D.set(D.ref(db, "rooms/" + ROOM + "/problem"),
+      {items:[{lines:["f(x)=x^{3}"], images:[]}], at: D.serverTimestamp()});
+    step("outB", "The teacher can push a problem", true, "rooms/" + ROOM + "/problem");
+  }catch(e){
+    ok = false;
+    step("outB", "The teacher can push a problem", false, (e.code || "") + " " + e.message);
+  }
+
+  try{
+    if(studentUid){
+      await D.set(D.ref(db, "rooms/" + ROOM + "/feedback/" + studentUid), {lines:["check the sign"]});
+      await D.set(D.ref(db, "rooms/" + ROOM + "/checks/" + studentUid), true);
+    }
+    step("outB", "The teacher can leave feedback and a checkmark", true, "");
+  }catch(e){
+    ok = false;
+    step("outB", "The teacher can leave feedback and a checkmark", false, (e.code || "") + " " + e.message);
+  }
+
+  try{
+    await D.remove(D.ref(db, "rooms/" + ROOM));
+    step("outB", "Tidy up the test data", true, "removed rooms/" + ROOM);
+  }catch(e){
+    step("outB", "Tidy up the test data", false, (e.code || "") + " " + e.message);
+  }
+
+  btn.disabled = false;
+  document.getElementById("pass").value = "";
+  finish(ok, ok
+    ? "Everything is as it should be. Students can write only their own board and cannot see the class; the teacher account can do everything."
+    : "The teacher account could not do something it needs to. Send me this screen.");
+});
+</script>
+</body>
+</html>
