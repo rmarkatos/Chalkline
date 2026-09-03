@@ -1062,10 +1062,16 @@ let lines = [];            // {id, kind:'math'|'note', root:[] | text:''}
 let focusLine = 0;
 let cur = null;            // {list, i}
 let sel = null;            // {list, a, b}  (indices, a<=b) same-list only
-let uid = 1;
+/* Line ids are used to pin a teacher's note to a particular line. Starting
+   from 1 on every page load meant a note written last lesson could land on
+   this lesson's line 1. A per-session prefix makes that impossible. */
+const LINE_SEED = Math.random().toString(36).slice(2, 8);
+let uidN = 1;
+const uid = {get value(){ return LINE_SEED + "-" + (uidN++); }};
+function newId(){ return LINE_SEED + "-" + (uidN++); }
 
-function newMathLine(){ const l={id:uid++, kind:"math", root:L()}; link(l.root,null); return l; }
-function newNoteLine(){ return {id:uid++, kind:"note", text:""}; }
+function newMathLine(){ const l={id:newId(), kind:"math", root:L()}; link(l.root,null); return l; }
+function newNoteLine(){ return {id:newId(), kind:"note", text:""}; }
 
 function curLine(){ return lines[focusLine]; }
 
@@ -3519,7 +3525,7 @@ function drawPlot(cv, sol, win, opt){
    Not a panel beside the editor: the maths keeps its full width and the graph
    takes its turn in the flow of the work, the way a sketch does on paper. */
 function newGraphLine(fam){
-  return {id:uid++, kind:"graph", g:{fam: fam || "log", f:{}, on:false}};
+  return {id:newId(), kind:"graph", g:{fam: fam || "log", f:{}, on:false}};
 }
 
 /* Everything about the state of one graph line: what has been said, whether
@@ -3584,7 +3590,7 @@ function graphFromText(t){
   try{
     const g = JSON.parse(t.slice(4));
     if(!g || !FAMILIES[g.fam]) return null;
-    return {id:uid++, kind:"graph",
+    return {id:newId(), kind:"graph",
             g:{fam:g.fam, f:Object.assign({}, g.f), on:!!g.on}};
   }catch(e){ return null; }
 }
@@ -4005,6 +4011,17 @@ async function wipeRooms(rooms){
   }
 }
 
+/* Anonymous sign-in gives one identity per BROWSER, and it is remembered
+   between visits — so two student tabs on one machine were the same student,
+   sharing a board and each other's feedback, and a student returning tomorrow
+   inherited yesterday's. Every page load now gets its own tag, so every tab
+   and every visit is a new student who has never been here before. Nothing
+   carries over, which is the point.
+
+   The rules allow any board id that BEGINS with the signed-in id, so a student
+   still cannot reach anyone else's work. */
+const TAB_TAG = Math.random().toString(36).slice(2, 10);
+
 async function accountFor(role){
   const F = await ensureFirebase();
   if(role === "teacher"){
@@ -4084,7 +4101,9 @@ function FirebaseSync(room, role){
     setConn("connecting");
     const F = await ensureFirebase();
     const user = await accountFor(role);
-    uid = user.uid;
+    // the teacher is one person on one screen; a student is one tab
+    // the teacher is one person; a student is one tab, this time round
+    uid = role === "teacher" ? user.uid : user.uid + "-" + TAB_TAG;
     db  = F.db;
     d   = F.D;
 
