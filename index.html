@@ -4580,7 +4580,18 @@ function refreshAges(){
 /* ---- teacher: writing on one student's board -------------------------- */
 function openBoard(id){
   const b = boards.get(id);
-  if(!b) return;
+  // Opening a student used to fail silently if anything here went wrong, which
+  // is the worst way for it to fail: a click that does nothing tells you
+  // nothing. Say what happened instead.
+  if(!b){
+    reportError("opening that student",
+      "they are no longer on the wall — they may have closed their tab");
+    return;
+  }
+  try{ openBoardNow(id, b); }
+  catch(err){ reportError("opening " + (b.name || "that student"), err); }
+}
+function openBoardNow(id, b){
   editorTarget = {mode:"feedback", boardId:id};
   document.getElementById("actingName").textContent = b.name;
   document.getElementById("actingBar").hidden = false;
@@ -5186,6 +5197,7 @@ window.__chalkboard = {
   problems: () => problemItems,
   presence: ms => { if(ms) PRESENT_MS = ms; return PRESENT_MS; },
   ensure: ensureFirebase,
+  openBoard,
   graph: () => ({evalNum, evalPt, evalNode, numOf, solveGraph, windowFor,
                  FAMILIES, addGraphLine, NONEVAL, focusField, gField: () => gField, ensure: ensureFirebase}),
   sweep: () => refreshAges(),
