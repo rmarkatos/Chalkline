@@ -5552,7 +5552,10 @@ if(location.protocol === "file:"){
     document.getElementById("splashOut").onclick = () => clerk && clerk.signOut();
     try{
       await startAccounts();
-      document.getElementById("splashMsg").textContent = "";
+      // only clear the "signing you in" line — not anything startAccounts
+      // put there to explain why the screen is empty
+      const m = document.getElementById("splashMsg");
+      if(/^Signing you in/.test(m.textContent)) m.textContent = "";
     }catch(err){
       document.getElementById("splashMsg").textContent =
         "Could not reach the sign-in service. Check your connection and reload.";
@@ -5707,7 +5710,17 @@ let lastAccountsError = "";
 
 function noteError(what, error){
   if(!error) return false;
-  lastAccountsError = what + ": " + (error.message || String(error));
+  const code = error.code || "";
+  /* PGRST301 is PostgREST refusing the token itself, not refusing a row. It
+     means Supabase has not been told to trust Clerk, so every request arrives
+     unverified however correctly somebody signed in. Worth saying in words,
+     because the code alone sends you hunting through the rules, which are
+     fine. */
+  const plain = code === "PGRST301"
+    ? "the database does not trust the sign-in service yet — finish the Clerk "
+      + "connection in Supabase (Authentication \u2192 Third-Party Auth)"
+    : (error.message || String(error));
+  lastAccountsError = what + ": " + plain;
   reportError(what, error);
   return true;
 }
