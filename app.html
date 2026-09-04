@@ -837,7 +837,8 @@ button{font:inherit;color:inherit}
     </div>
     <div class="tiles" id="tiles"></div>
     <p class="empty" id="tEmpty">No student has joined <b id="tEmptyRoom"></b> yet.
-      Open this file in another window, enter the same class code and join as a student.</p>
+      <span id="tEmptyHow">Open this file in another window, enter the same class
+      code and join as a student.</span></p>
   </div>
 </div>
 
@@ -972,6 +973,18 @@ const CLASS_NAMES = {};
    case an error banner. That has now happened five times. */
 let accountsReady = null;
 let waitChannel = null;
+
+/* What to call the room we are in.
+
+   A typed class code is upper-cased so that "alg2" and "ALG2" meet in the
+   same room. A class id is not typed by anybody — it comes from the classes
+   table — and upper-casing it means every query asks for ALGEBRA2 while the
+   database holds algebra2. Nothing matches, no student ever appears on the
+   wall, and a board write breaks its link to the class outright. */
+function normalRoom(room){
+  return USE_ACCOUNTS ? (room || "").trim()
+                      : (room || "ALG2").trim().toUpperCase();
+}
 let editorTarget = {mode:"idle"};
 let pubTimer = null, heartbeat = null, agoTimer = null;
 /* Opening a panel loads content into the editor, which renders, which would
@@ -4626,7 +4639,7 @@ function publishNow(){
 /* ---- joining ---------------------------------------------------------- */
 function join(asRole, room, name){
   role = asRole;
-  myRoom = (room || "ALG2").trim().toUpperCase();
+  myRoom = normalRoom(room);
   myName = (name || "").trim();
   sync = makeSync(myRoom, asRole);
   location.hash = "room=" + encodeURIComponent(myRoom) +
@@ -4682,11 +4695,15 @@ function join(asRole, room, name){
       USE_ACCOUNTS ? (CLASS_NAMES[myRoom] || myRoom) : "Class " + myRoom;
     document.getElementById("tLink").value =
       location.origin + location.pathname + "#room=" + encodeURIComponent(myRoom) + "&role=student";
-    document.getElementById("tEmptyRoom").textContent = myRoom;
+    document.getElementById("tEmptyRoom").textContent =
+      USE_ACCOUNTS ? (CLASS_NAMES[myRoom] || myRoom) : myRoom;
     showScreen("teacher");
     if(USE_ACCOUNTS){
       // with accounts there is no code to share — a student signs in and asks
       document.querySelector("#viewTeacher .joinlink").hidden = true;
+      document.getElementById("tEmptyHow").textContent =
+        "Students sign in at chalklineschool.com and ask to join. " +
+        "Anyone waiting appears above.";
       renderWaiting();
       watchWaiting();
     }
@@ -5973,6 +5990,8 @@ async function startAccounts(){
 }
 
 window.__chalkline = {
+  room: r => normalRoom(r),
+  accounts: () => USE_ACCOUNTS,
   tex: () => lines.map(l => l.kind==="math" ? texList(l.root) : "%"+l.text).join("\n"),
   type: s => { for(const c of s) typeChar(c); render(); },
   key: k => hidden.dispatchEvent(new KeyboardEvent("keydown", {key:k, bubbles:true, cancelable:true})),

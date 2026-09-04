@@ -110,6 +110,19 @@ const FAKE_CLERK = `window.CHALKLINE_CLERK = {
   const waitPanel = await p.evaluate(() => !!document.getElementById('waitPanel'));
   chk('the approvals panel exists', waitPanel);
 
+  /* A class id comes from the database, not from a person typing it, so it
+     must survive untouched. The old code upper-cased it — a leftover from
+     class codes — which meant every query asked for ALGEBRA2 while the table
+     held algebra2. Nothing matched: no student ever reached the wall, nobody
+     appeared in the approvals queue, and a board write broke its link to the
+     class. It looked like an empty classroom rather than a bug. */
+  chk('accounts really are on in this build',
+      await p.evaluate(() => window.__chalkline.accounts() === true));
+  const kept = await p.evaluate(() => window.__chalkline.room('algebra2'));
+  chk('a class id keeps its case', kept === 'algebra2', 'got ' + JSON.stringify(kept));
+  const kept2 = await p.evaluate(() => window.__chalkline.room('apcalcab'));
+  chk('and so does the other one', kept2 === 'apcalcab', 'got ' + JSON.stringify(kept2));
+
   await browser.close();
   try { fs.unlinkSync(TEMP); } catch (e) {}
 
