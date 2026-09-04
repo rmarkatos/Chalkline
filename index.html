@@ -977,6 +977,7 @@ const CLASS_NAMES = {};
    case an error banner. That has now happened five times. */
 let accountsReady = null;
 let waitChannel = null;
+let waitPoll = null, splashPoll = null;
 
 /* What to call the room we are in.
 
@@ -5899,6 +5900,12 @@ function watchMyEnrolment(){
            filter: "student_id=eq." + clerk.user.id},
           () => refreshSplash())
       .subscribe();
+  // and ask anyway, for the same reason the wall does
+  clearInterval(splashPoll);
+  splashPoll = setInterval(() => {
+    if(!screens.splash.hidden) refreshSplash();
+    else { clearInterval(splashPoll); splashPoll = null; }
+  }, 4000);
 }
 
 /* ---- the teacher's side ------------------------------------------------ */
@@ -5992,7 +5999,14 @@ async function renderWaiting(){
   });
 }
 
-/* The teacher should not have to refresh either. */
+/* The teacher should not have to refresh either.
+
+   Two ways of finding out, on purpose. The live channel is the fast one and
+   usually arrives within a second. The poll is the one that is always right:
+   a live channel can fail to start for reasons nothing on screen explains —
+   a token it did not get, a socket a network quietly dropped — and the cost
+   of that is a student sitting in a waiting room nobody knows about. Asking
+   every few seconds is cheap and cannot silently stop. */
 function watchWaiting(){
   if(!USE_ACCOUNTS || !amTeacher || !supa) return;
   if(waitChannel) try{ supa.removeChannel(waitChannel); }catch(e){}
@@ -6001,6 +6015,8 @@ function watchWaiting(){
         {event: "*", schema: "public", table: "enrolments"},
         () => renderWaiting())
     .subscribe();
+  clearInterval(waitPoll);
+  waitPoll = setInterval(() => { if(role === "teacher") renderWaiting(); }, 5000);
 }
 
 /* ---- start-up ---------------------------------------------------------- */
