@@ -4055,6 +4055,12 @@ document.addEventListener("click", e => {
    ------------------------------------------------------------------------- */
 let fbReady = null;
 function ensureFirebase(){
+  /* With accounts on, Firebase is not part of this app any more. Something
+     still calling it — a sign-out button, a leftover listener — would go off
+     and fetch an SDK that is not needed, fail, and put "could not download
+     the Firebase code" in front of a student who is simply trying to write
+     on their board. Refuse plainly instead. */
+  if(USE_ACCOUNTS) return Promise.reject(new Error("accounts are on; Firebase is not used"));
   if(fbReady) return fbReady;
   const attempt = (async () => {
     const [appMod, dbMod, authMod] = await Promise.all([
@@ -4345,7 +4351,14 @@ function SupabaseSync(classId, asRole){
   // connected and dead, which is the worst way for this to fail.
   const W = (what, p) => {
     Promise.resolve(p).then(r => {
-      if(r && r.error) reportError("writing " + what, r.error);
+      if(r && r.error){
+        const e = r.error;
+        if(e.code === "42501")
+          reportError("writing " + what, new Error(
+            "the database rules refused it \u2014 you may not be approved in " +
+            "this class yet, or this page is an old copy. Reload it."));
+        else reportError("writing " + what, e);
+      }
     }).catch(err => reportError("writing " + what, err));
     return p;
   };
@@ -5729,6 +5742,15 @@ function noteError(what, error){
      unverified however correctly somebody signed in. Worth saying in words,
      because the code alone sends you hunting through the rules, which are
      fine. */
+  /* 42501 is Postgres refusing on the rules — the row was understood and not
+     allowed. On a board that almost always means the student is not approved
+     in the class they are writing to, which includes writing to a class id
+     that does not exist. */
+  if(code === "42501")
+    { lastAccountsError = what + ": the database rules refused that. Usually it "
+        + "means you are not approved in this class yet, or the page is an old "
+        + "copy \u2014 reload it.";
+      reportError(what, error); return true; }
   const plain = code === "PGRST301"
     ? "the database does not trust the sign-in service yet — finish the Clerk "
       + "connection in Supabase (Authentication \u2192 Third-Party Auth)"
