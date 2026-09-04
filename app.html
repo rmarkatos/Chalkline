@@ -5625,15 +5625,51 @@ function loadScript(src){
   });
 }
 
+/* Clerk serves its own script from your domain — clerk.chalklineschool.com —
+   and wants the key on the tag rather than passed in code. The host is inside
+   the key itself: everything after the second underscore is base64 for
+   "clerk.yourdomain.com$". Reading it from the key means there is no second
+   place to keep the domain in step. */
+function clerkHost(key){
+  try{
+    const b64 = key.split("_").slice(2).join("_");
+    const host = atob(b64).replace(/\$+$/, "");
+    return /^[a-z0-9.-]+$/i.test(host) ? host : null;
+  }catch(e){ return null; }
+}
+
+function loadClerkScript(key){
+  const host = clerkHost(key);
+  const src = host
+    ? "https://" + host + "/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+    : "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js";
+  return new Promise((res, rej) => {
+    const el = document.createElement("script");
+    el.setAttribute("data-clerk-publishable-key", key);
+    el.crossOrigin = "anonymous";
+    el.async = true;
+    el.src = src;
+    el.onload = () => res();
+    el.onerror = () => rej(new Error("could not load the sign-in service"));
+    document.head.appendChild(el);
+  });
+}
+
 /* Bring up Clerk and Supabase, once. Supabase is told to ask Clerk for a
    fresh token on every request rather than being handed one, so a token
    going stale mid-lesson fixes itself instead of logging a student out. */
 function ensureAccounts(){
   if(accountsReady) return accountsReady;
   accountsReady = (async () => {
-    await loadScript("https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js");
-    clerk = new window.Clerk(CLERK_CONFIG.publishableKey);
-    await clerk.load({ afterSignOutUrl: location.pathname });
+    await loadClerkScript(CLERK_CONFIG.publishableKey);
+    /* Clerk v5 hands back an object that is already built, not a class to
+       build. Older builds handed back a class. Accept either rather than
+       depending on which one the CDN happens to serve today. */
+    clerk = window.Clerk;
+    if(typeof clerk === "function") clerk = new clerk(CLERK_CONFIG.publishableKey);
+    if(!clerk || typeof clerk.load !== "function")
+      throw new Error("the sign-in service loaded but did not start");
+    await clerk.load({ afterSignOutUrl: location.origin + location.pathname });
 
     await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2");
     supa = window.supabase.createClient(SUPA_CONFIG.url, SUPA_CONFIG.publishableKey, {
