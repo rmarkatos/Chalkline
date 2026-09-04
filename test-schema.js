@@ -227,6 +227,33 @@ async function tryQuery(db, sql, params) {
   chk('ending keeps the roster', Number(L.enrolments) === 2, `enrolments=${L.enrolments}`);
   await db.exec('rollback');
 
+  // ---- re-running the file must not destroy anything ----------------------
+  //  Ryan will paste this into Supabase more than once as it changes. It has
+  //  to be safe to re-run against a database that already has a roster in it,
+  //  or every edit would cost him his class list.
+  await asOwner(db);
+  await db.exec(`
+    insert into public.teachers (email) values ('second.teacher@example.com')
+      on conflict do nothing;
+    insert into public.enrolments (class_id, student_id, student_email, status)
+      values ('apcalcab', 'user_keep_me', 'keep@school.org', 'approved')
+      on conflict do nothing;
+    insert into public.boards (class_id, student_id, name, lines)
+      values ('apcalcab', 'user_keep_me', 'Keep', '["1+1"]'::jsonb)
+      on conflict do nothing;
+  `);
+  await db.exec(sql);                       // the whole file again, as he would
+  const after = (await db.query(`select
+      (select count(*) from public.enrolments where student_id='user_keep_me') as enrol,
+      (select count(*) from public.boards     where student_id='user_keep_me') as board,
+      (select count(*) from public.teachers   where email='second.teacher@example.com') as teach,
+      (select count(*) from public.classes) as classes`)).rows[0];
+  chk('re-running keeps the roster',   Number(after.enrol) === 1, `enrolments=${after.enrol}`);
+  chk('re-running keeps live work',    Number(after.board) === 1, `boards=${after.board}`);
+  chk('re-running keeps extra teachers', Number(after.teach) === 1, `teachers=${after.teach}`);
+  chk('re-running does not duplicate classes', Number(after.classes) === 2,
+      `classes=${after.classes}`);
+
   console.log(`\nschema + rules: ${pass}/${pass + fail} passed`);
   if (fail) process.exit(1);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -21,6 +21,18 @@ import json, os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLACEHOLDER = "you@example.com"
 
+# The Supabase and Clerk settings blocks, exactly as they sit in app.html.
+# build.py fills them from supabase-config.json and clerk-config.json the same
+# way it fills the Firebase one, so nobody edits a line by hand.
+BLANK_SUPABASE = '''window.CHALKLINE_SUPABASE = {
+  url:             "",
+  publishableKey:  ""
+};'''
+
+BLANK_CLERK = '''window.CHALKLINE_CLERK = {
+  publishableKey:  ""
+};'''
+
 BLANK = '''window.CHALKLINE_FIREBASE = {
   apiKey:      "",
   authDomain:  "",
@@ -49,6 +61,33 @@ def configured(page, cfg):
         sys.exit("build: the settings block in app.html has changed shape — "
                  "update BLANK in build.py to match it")
     return page.replace(BLANK, filled, 1)
+
+
+def services(page):
+    """Fill in the Supabase and Clerk settings.
+
+    Both keys are publishable — they name the project and grant nothing, the
+    same as the Firebase one. The secret keys of both services are deliberately
+    absent: nothing in this build can reach them, so nothing can leak them.
+    """
+    for name, blank, keys in (
+        ("supabase-config.json", BLANK_SUPABASE, ("url", "publishableKey")),
+        ("clerk-config.json",    BLANK_CLERK,    ("publishableKey",)),
+    ):
+        path = os.path.join(HERE, name)
+        cfg = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {}
+        for bad in ("secret", "serviceRole", "service_role", "secretKey"):
+            if bad in cfg:
+                sys.exit("build: %s contains a %r key. That must never reach the "
+                         "browser — remove it and rotate it." % (name, bad))
+        head = blank.split("{", 1)[0] + "{\n"
+        filled = head + "".join('  %-16s "%s",\n' % (k + ":", cfg.get(k, ""))
+                                for k in keys).rstrip(",\n") + "\n};"
+        if blank not in page:
+            sys.exit("build: the %s settings block in app.html has changed shape "
+                     "— update build.py to match it" % name.split("-")[0])
+        page = page.replace(blank, filled, 1)
+    return page
 
 
 def schema():
@@ -90,7 +129,7 @@ def main():
     cfg_path = os.path.join(HERE, "firebase-config.json")
     cfg = json.load(open(cfg_path, encoding="utf-8")) if os.path.exists(cfg_path) else {}
     site = os.path.join(HERE, "index.html")
-    open(site, "w", encoding="utf-8").write(configured(page, cfg))
+    open(site, "w", encoding="utf-8").write(services(configured(page, cfg)))
 
     ver = re.search(r'class="ver">([^<]+)<', page)
     print("built %s (%d bytes)" % (os.path.basename(out), len(page)))

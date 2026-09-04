@@ -19,6 +19,27 @@ window.CHALKLINE_FIREBASE = {
 };
 </script>
 
+<!-- =====================================================================
+     SUPABASE AND CLERK SETTINGS  —  filled in by build.py, never by hand.
+
+     Supabase is the database; Clerk is the sign-in. Both keys below are
+     publishable: they name the project, they do not grant access. Access
+     is decided by the rules in supabase-schema.sql.
+
+     Supabase also issues a SECRET key, and Clerk a SECRET key. Neither
+     belongs anywhere near this file. If you are ever asked to paste a key
+     called "secret" or "service role" into the app, the answer is no.
+     ===================================================================== -->
+<script>
+window.CHALKLINE_SUPABASE = {
+  url:             "",
+  publishableKey:  ""
+};
+window.CHALKLINE_CLERK = {
+  publishableKey:  ""
+};
+</script>
+
 <style>
 :root{
   --paper:#E9EDEF; --surface:#FCFDFD; --surface-2:#F1F5F6;
@@ -716,7 +737,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v27</span></p>
+      <span class="ver">v28</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -756,7 +777,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v27</span>
+      <span class="ver">v28</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -786,7 +807,7 @@ button{font:inherit;color:inherit}
     <h1>Chalkline</h1>
     <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
-    <span class="ver">v27</span>
+    <span class="ver">v28</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
