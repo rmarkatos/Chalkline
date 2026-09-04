@@ -5693,17 +5693,64 @@ function myDisplayName(){
   return (u.fullName || u.firstName || myEmail().split("@")[0] || "student").trim();
 }
 
-/* Who is this, and where do they belong? One round trip each. */
+/* Who is this, and where do they belong? One round trip each.
+
+   Every one of these used to drop its error on the floor, which is how a
+   signed-in teacher ended up staring at an empty screen that said "which
+   class are you in?" and nothing else. A silent refusal is the worst way for
+   this to fail — the same reason every write in the sync layer is checked. */
+let lastAccountsError = "";
+
+function noteError(what, error){
+  if(!error) return false;
+  lastAccountsError = what + ": " + (error.message || String(error));
+  reportError(what, error);
+  return true;
+}
+
+/* What Supabase actually sees in the token Clerk hands it. If the two are not
+   introduced properly, every request arrives as a stranger and every table
+   says no — which looks exactly like a broken app rather than a missing
+   setting. Worth being able to say which. */
+async function tokenClaims(){
+  try{
+    if(!clerk || !clerk.session) return null;
+    const t = await clerk.session.getToken();
+    if(!t) return null;
+    const body = JSON.parse(atob(t.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));
+    return body;
+  }catch(e){ return null; }
+}
+
+async function diagnose(){
+  const c = await tokenClaims();
+  if(!c) return "Signed in, but no token is reaching the database.";
+  const bits = [];
+  if(c.role !== "authenticated")
+    bits.push("the token does not say role=authenticated, so the database " +
+              "treats you as a stranger — finish Clerk's \u201cConnect with " +
+              "Supabase\u201d setup");
+  if(!c.email)
+    bits.push("the token carries no email address, so you cannot be matched " +
+              "against the teacher list — add email to Clerk\u2019s session token");
+  return bits.length ? bits.join(". ") + "."
+                     : "The token looks right (role and email both present).";
+}
+
 async function readMe(){
+  lastAccountsError = "";
   const t = await supa.rpc("is_teacher");
+  noteError("checking whether you are the teacher", t.error);
   amTeacher = t.data === true;
   const e = await supa.from("enrolments").select("class_id,status");
+  noteError("reading your classes", e.error);
   myEnrolments = e.data || [];
   return {amTeacher, myEnrolments};
 }
 
 async function classList(){
   const r = await supa.from("classes").select("id,name,sort").order("sort");
+  noteError("reading the class list", r.error);
   (r.data || []).forEach(c => { CLASS_NAMES[c.id] = c.name; });
   return r.data || [];
 }
@@ -5770,8 +5817,9 @@ async function refreshSplash(){
     pick.appendChild(b);
   });
   if(!pick.children.length){
-    document.getElementById("splashMsg").textContent =
-      "There is no class here for you to join. Ask your teacher.";
+    const msg = document.getElementById("splashMsg");
+    msg.textContent = "No classes came back. " + (await diagnose());
+    if(lastAccountsError) msg.textContent += "  (" + lastAccountsError + ")";
   }
 }
 
