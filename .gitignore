@@ -6,3 +6,8 @@ node_modules/
 
 # macOS clutter
 .DS_Store
+
+# local settings — holds the teacher email, must never be published
+chalkline-local.json
+# the ready-to-run SQL that build.py fills in from it
+supabase-schema.local.sql
