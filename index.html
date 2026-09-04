@@ -775,6 +775,34 @@ button{font:inherit;color:inherit}
   </div>
 </div>
 
+<!-- Shown after a student signs in: which class are you in, and then
+     the wait while the teacher lets them in. Only ever used when accounts
+     are switched on. -->
+<div class="screen" id="viewSplash" hidden>
+  <div class="join">
+    <h1>Chalkline</h1>
+    <p class="joinsub">Typing mathematics made user friendly
+      <span class="ver">v28</span></p>
+
+    <div id="splashPick">
+      <p class="joinsub" id="splashHello"></p>
+      <p class="signwhy">Which class are you in?</p>
+      <div class="joinbtns" id="classPick"></div>
+    </div>
+
+    <div id="splashWait" hidden>
+      <p class="signwhy" id="waitMsg"></p>
+      <p class="signmsg">You can leave this page open. It will let you in by
+        itself once your teacher approves you &mdash; no need to refresh.</p>
+    </div>
+
+    <p class="signmsg" id="splashMsg"></p>
+    <div class="joinbtns">
+      <button class="btn" id="splashOut">Sign out</button>
+    </div>
+  </div>
+</div>
+
 <div class="screen" id="viewTeacher" hidden>
   <div class="topbar">
     <div class="brand">
@@ -919,6 +947,16 @@ button{font:inherit;color:inherit}
 /* Declared up here because render() publishes, and render() runs long before
    the sharing section below is reached. */
 let sync = null, role = null, myRoom = "", myName = "", myId = "";
+/* Accounts. Declared here for the same reason as everything else in this
+   block: render() and the screen switcher touch them during start-up, long
+   before section 9 is reached. */
+const CLERK_CONFIG = window.CHALKLINE_CLERK || {};
+const SUPA_CONFIG  = window.CHALKLINE_SUPABASE || {};
+/* With no settings — which is every test run — the app keeps its old
+   behaviour: type a class code, type a name, no sign-in. */
+const USE_ACCOUNTS = !!(CLERK_CONFIG.publishableKey && SUPA_CONFIG.url);
+let clerk = null, supa = null;
+let myEnrolments = [], amTeacher = false, pendingList = [];
 let editorTarget = {mode:"idle"};
 let pubTimer = null, heartbeat = null, agoTimer = null;
 /* Opening a panel loads content into the editor, which renders, which would
@@ -4276,6 +4314,7 @@ const ckMap  = new Map();              // id -> checkmark
 
 const screens = {
   landing: document.getElementById("viewLanding"),
+  splash:  document.getElementById("viewSplash"),
   board:   document.getElementById("viewBoard"),
   teacher: document.getElementById("viewTeacher")
 };
@@ -5280,6 +5319,215 @@ window.__chalkboard = {
 };
 
 /* test hook */
+/* ===========================================================================
+   9. Accounts — Clerk signs people in, Supabase decides what they may see
+
+   Chalkline used to let anyone with the class code walk in. It does not any
+   more. A student makes an account, says which class they are in, and waits
+   for the teacher to let them in. The class code is gone: the roster is the
+   gate now.
+
+   None of this runs unless both settings blocks at the top of the file are
+   filled in. Empty means the old behaviour — a class code and a name — which
+   is what every test suite drives, so the suites never touch a real account.
+
+   Two services, and it matters which does what:
+     Clerk     proves who somebody is, and hands over a signed token
+     Supabase  reads that token and applies the rules in supabase-schema.sql
+
+   The browser holds only publishable keys. Everything that decides access
+   lives in the database, where a student cannot reach it.
+   ========================================================================= */
+
+function loadScript(src){
+  return new Promise((res, rej) => {
+    const el = document.createElement("script");
+    el.src = src; el.async = true;
+    el.onload = () => res();
+    el.onerror = () => rej(new Error("could not load " + src));
+    document.head.appendChild(el);
+  });
+}
+
+/* Bring up Clerk and Supabase, once. Supabase is told to ask Clerk for a
+   fresh token on every request rather than being handed one, so a token
+   going stale mid-lesson fixes itself instead of logging a student out. */
+let accountsReady = null;
+function ensureAccounts(){
+  if(accountsReady) return accountsReady;
+  accountsReady = (async () => {
+    await loadScript("https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js");
+    clerk = new window.Clerk(CLERK_CONFIG.publishableKey);
+    await clerk.load({ afterSignOutUrl: location.pathname });
+
+    await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2");
+    supa = window.supabase.createClient(SUPA_CONFIG.url, SUPA_CONFIG.publishableKey, {
+      accessToken: async () => {
+        try { return clerk.session ? await clerk.session.getToken() : null; }
+        catch(e){ return null; }
+      }
+    });
+    return {clerk, supa};
+  })();
+  return accountsReady;
+}
+
+function myEmail(){
+  const u = clerk && clerk.user;
+  return u ? ((u.primaryEmailAddress && u.primaryEmailAddress.emailAddress) || "") : "";
+}
+function myDisplayName(){
+  const u = clerk && clerk.user;
+  if(!u) return "student";
+  return (u.fullName || u.firstName || myEmail().split("@")[0] || "student").trim();
+}
+
+/* Who is this, and where do they belong? One round trip each. */
+async function readMe(){
+  const t = await supa.rpc("is_teacher");
+  amTeacher = t.data === true;
+  const e = await supa.from("enrolments").select("class_id,status");
+  myEnrolments = e.data || [];
+  return {amTeacher, myEnrolments};
+}
+
+async function classList(){
+  const r = await supa.from("classes").select("id,name,sort").order("sort");
+  return r.data || [];
+}
+
+/* ---- the student's side ------------------------------------------------ */
+
+async function askToJoin(classId){
+  const msg = document.getElementById("splashMsg");
+  msg.textContent = "";
+  const row = {
+    class_id: classId,
+    student_id: clerk.user.id,
+    student_name: myDisplayName(),
+    student_email: myEmail(),
+    status: "pending"
+  };
+  const r = await supa.from("enrolments").insert(row);
+  if(r.error){
+    // asking twice is not an error worth showing — they are already waiting
+    if(!/duplicate|unique/i.test(r.error.message || "")){
+      msg.textContent = "Could not send that: " + r.error.message;
+      return;
+    }
+  }
+  await refreshSplash();
+}
+
+function showSplashWaiting(className){
+  document.getElementById("splashPick").hidden = true;
+  document.getElementById("splashWait").hidden = false;
+  document.getElementById("waitMsg").textContent =
+    "You have asked to join " + className + ". Waiting for your teacher to let you in.";
+}
+
+async function refreshSplash(){
+  const classes = await classList();
+  const byId = {}; classes.forEach(c => byId[c.id] = c.name);
+  await readMe();
+
+  const approved = myEnrolments.filter(e => e.status === "approved");
+  if(approved.length){
+    // already in a class — straight to the board
+    join("student", approved[0].class_id, myDisplayName());
+    return;
+  }
+  const waiting = myEnrolments.filter(e => e.status === "pending");
+  if(waiting.length){
+    showSplashWaiting(byId[waiting[0].class_id] || waiting[0].class_id);
+    return;
+  }
+  const removed = myEnrolments.filter(e => e.status === "removed");
+
+  document.getElementById("splashPick").hidden = false;
+  document.getElementById("splashWait").hidden = true;
+  document.getElementById("splashHello").textContent = "Signed in as " + myEmail();
+  const pick = document.getElementById("classPick");
+  pick.innerHTML = "";
+  classes.forEach(c => {
+    if(removed.some(r => r.class_id === c.id)) return;   // cannot re-ask
+    const b = document.createElement("button");
+    b.className = "btn big on";
+    b.textContent = c.name;
+    b.onclick = () => askToJoin(c.id);
+    pick.appendChild(b);
+  });
+  if(!pick.children.length){
+    document.getElementById("splashMsg").textContent =
+      "There is no class here for you to join. Ask your teacher.";
+  }
+}
+
+/* A student left waiting should not have to refresh. Supabase pushes the row
+   back when the teacher approves it, and the rules mean a student is only
+   ever sent their own. */
+function watchMyEnrolment(){
+  if(!supa || !clerk || !clerk.user) return;
+  supa.channel("me-" + clerk.user.id)
+      .on("postgres_changes",
+          {event: "*", schema: "public", table: "enrolments",
+           filter: "student_id=eq." + clerk.user.id},
+          () => refreshSplash())
+      .subscribe();
+}
+
+/* ---- the teacher's side ------------------------------------------------ */
+
+async function loadPending(){
+  const r = await supa.from("enrolments")
+                      .select("id,class_id,student_name,student_email,asked_at")
+                      .eq("status", "pending")
+                      .order("asked_at");
+  pendingList = r.data || [];
+  return pendingList;
+}
+
+async function decideEnrolment(id, approved){
+  return supa.from("enrolments")
+             .update({status: approved ? "approved" : "removed",
+                      decided_at: new Date().toISOString()})
+             .eq("id", id);
+}
+
+/* The teacher belongs to every class, so they choose a wall rather than
+   asking to join one. Same screen, different buttons. */
+async function teacherPickClass(){
+  const classes = await classList();
+  showScreen("splash");
+  document.getElementById("splashPick").hidden = false;
+  document.getElementById("splashWait").hidden = true;
+  document.getElementById("splashHello").textContent = "Signed in as " + myEmail();
+  document.querySelector("#splashPick .signwhy").textContent = "Which class are you teaching?";
+  const pick = document.getElementById("classPick");
+  pick.innerHTML = "";
+  const waiting = await loadPending();
+  classes.forEach(c => {
+    const n = waiting.filter(w => w.class_id === c.id).length;
+    const b = document.createElement("button");
+    b.className = "btn big on";
+    b.textContent = c.name + (n ? "  (" + n + " waiting)" : "");
+    b.onclick = () => join("teacher", c.id, "");
+    pick.appendChild(b);
+  });
+}
+
+/* ---- start-up ---------------------------------------------------------- */
+
+async function startAccounts(){
+  await ensureAccounts();
+  if(!clerk.user){ clerk.openSignIn({}); return; }
+  await readMe();
+  if(amTeacher){ await teacherPickClass(); return; }
+  showScreen("splash");
+  watchMyEnrolment();
+  await refreshSplash();
+}
+
 window.__chalkline = {
   tex: () => lines.map(l => l.kind==="math" ? texList(l.root) : "%"+l.text).join("\n"),
   type: s => { for(const c of s) typeChar(c); render(); },
