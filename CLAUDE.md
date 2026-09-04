@@ -10,6 +10,11 @@ write mathematics, but making students learn LaTeX is not an option.
 
 Live at **https://chalklineschool.com/**
 
+Sign-in is **Clerk** (email, no Google). The database is **Supabase**. Both
+publishable keys sit in the page by design; access is decided by the rules in
+`supabase-schema.sql`. Neither service's *secret* key belongs anywhere near
+this repo — `build.py` refuses to build if one appears in a config file.
+
 ---
 
 ## The one rule
@@ -19,12 +24,12 @@ supporting. After any change:
 
 ```bash
 python3 build.py       # writes chalkline-board.html and index.html
-./run-tests.sh         # runs all 20 suites, prints one line each
+./run-tests.sh         # runs all 23 suites, prints one line each
 ```
 
 `index.html` is what goes on GitHub Pages. `chalkline-board.html` is the same
-app with no Firebase settings — the tests use it so they never touch the real
-database.
+app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
+drive it, so they never touch the real database or a real account.
 
 There is a version chip on screen (`v26`, next to the class code). **Bump it in
 `app.html` whenever you ship**, or nobody can tell which build they are looking
@@ -71,8 +76,15 @@ sync.on(type, fn)   sync.send(type, payload)   sync.ready(fn)
 sync.close()  sync.wipe()  sync.now()  sync.drop(id)
 ```
 
-`LocalSync` (BroadcastChannel, no account) is used when there are no Firebase
-settings. `FirebaseSync` is the real one. Message types: `board`, `problem`,
+Three implementations now. `makeSync` picks: **`SupabaseSync`** when the
+Supabase and Clerk settings are both filled in, `FirebaseSync` when only the
+Firebase ones are, and `LocalSync` (BroadcastChannel, no account) when none
+are — which is every test run.
+
+`SupabaseSync` has no `onDisconnect`. Firebase could be told "delete this row
+if the tab vanishes" and would honour it server-side; Postgres cannot. It
+turns out not to matter: a board carries a heartbeat and the wall already
+sweeps anything quiet for 30s, so the sweep was doing the real work all along. Message types: `board`, `problem`,
 `feedback`, `check`, `timer`, `close`, `end`, `gone`, `reconnected`.
 
 ### Shape in the database
@@ -94,15 +106,26 @@ sync layer at all. Keep it that way.
 
 ### Identity — read this before touching it
 
-- A **student id is `authUid + "-" + TAB_TAG`**, where `TAB_TAG` is minted
-  fresh on every page load. Anonymous sign-in gives one identity per *browser*,
-  not per tab, and remembers it between visits — so without this, two tabs on
-  one machine are the same student, sharing a board and each other's feedback.
-  Ryan wants every tab and every visit to be a student who has never been here
-  before; nothing carries over.
-- The rules therefore say `$id.beginsWith(auth.uid)`, not `===`.
-- **A change here needs `firebase-rules.json` re-published by hand.** The app
-  and the rules must ship together or students get `PERMISSION_DENIED`.
+**This was reversed deliberately in v28.** Chalkline used to let anyone with
+the class code walk in, and went out of its way to make every tab and every
+visit a student who had never been there before. Ryan decided he did not want
+anyone joining anonymously. So:
+
+- **A student is a person, not a tab.** They sign in with Clerk, and their
+  student id is their Clerk user id. Two tabs are the same student and share
+  a board — which is what anyone would expect, and the opposite of what the
+  old `TAB_TAG` existed to arrange. `TAB_TAG` only mattered because anonymous
+  sign-in handed out one id per browser.
+- **The class code is no longer a gate.** It was a word the teacher typed,
+  defaulting to `ALG2`, and anyone who guessed it was in. The roster is the
+  gate now: a student picks Algebra 2 or AP Calculus AB and waits for Ryan to
+  approve them.
+- **A change to the rules needs `supabase-schema.sql` re-run.** Ryan runs
+  `python3 build.py`, which writes `supabase-schema.local.sql` with his email
+  filled in, and he pastes that into the Supabase SQL editor. He never edits a
+  line by hand — that is a hard rule.
+- The old Firebase path is still in the file and still tested. It is what runs
+  when the settings blocks are empty, which is every test run.
 
 ### Nothing outlives the lesson
 
@@ -119,7 +142,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-20 suites, ~500 assertions plus 500 generated round-trips.
+23 suites, ~570 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -141,11 +164,26 @@ list.** `test-parser.js` generates 500 random expressions in the serialiser's
 own output format and asserts `parse(s)` is a fixed point. That catches classes
 of bug no hand-written case would.
 
+**Start-up is tested with the accounts settings filled in.** Every other suite
+drives `chalkline-board.html`, where the settings are empty and none of the
+accounts code runs — so nothing could catch a mistake in it. `test-boot.js`
+builds a copy with settings pointing at nowhere and asserts the script reaches
+the end. It exists because `accountsReady` was declared in section 9 while
+`boot()` runs long before section 9 — the fifth time that trap has bitten, and
+the first time it reached the live site.
+
 **A test that cannot fail is not a test.** When you fix a bug, first make the
 test fail against the old behaviour, then fix it. `test-tabs.js` passed *before*
 the identity fix, because the stand-in gave every tab its own uid — the opposite
 of the real SDK. The stand-in had to be corrected before the test meant
 anything.
+
+This has now happened twice more. `test-schema.js` failed everywhere until its
+stand-in granted `authenticated` access to the `auth` schema, which real
+Supabase does. And the first `test-boot.js` passed happily against the exact
+bug that had just reached the live site, because start-up catches its own
+exceptions to show a sentence rather than a blank screen — so the browser
+never reported one. It now reads the error off the screen as well.
 
 ### Regenerating the enforcing stand-in
 
