@@ -26,34 +26,6 @@
 
 
 -- ---------------------------------------------------------------------------
---  Helpers — small functions so the policies below read like English
--- ---------------------------------------------------------------------------
-
-create or replace function public.clerk_uid() returns text
-  language sql stable as $$ select auth.jwt() ->> 'sub' $$;
-
-create or replace function public.clerk_email() returns text
-  language sql stable as $$ select lower(auth.jwt() ->> 'email') $$;
-
-create or replace function public.is_teacher() returns boolean
-  language sql stable security definer set search_path = public as $$
-    select exists (select 1 from public.teachers t where t.email = public.clerk_email())
-  $$;
-
--- Is this person an approved student of this class? Used by nearly every
--- policy below, so it is written once here.
-create or replace function public.is_approved_in(cls text) returns boolean
-  language sql stable security definer set search_path = public as $$
-    select exists (
-      select 1 from public.enrolments e
-      where e.class_id = cls
-        and e.student_id = public.clerk_uid()
-        and e.status = 'approved'
-    )
-  $$;
-
-
--- ---------------------------------------------------------------------------
 --  The roster — the only thing that outlives a lesson
 -- ---------------------------------------------------------------------------
 
@@ -144,6 +116,34 @@ create table if not exists public.sessions (
   closed_at  timestamptz,
   ended      boolean not null default false   -- true = session over, not just closed
 );
+
+
+-- ---------------------------------------------------------------------------
+--  Helpers — small functions so the policies below read like English
+-- ---------------------------------------------------------------------------
+
+create or replace function public.clerk_uid() returns text
+  language sql stable as $$ select auth.jwt() ->> 'sub' $$;
+
+create or replace function public.clerk_email() returns text
+  language sql stable as $$ select lower(auth.jwt() ->> 'email') $$;
+
+create or replace function public.is_teacher() returns boolean
+  language sql stable security definer set search_path = public as $$
+    select exists (select 1 from public.teachers t where t.email = public.clerk_email())
+  $$;
+
+-- Is this person an approved student of this class? Used by nearly every
+-- policy below, so it is written once here.
+create or replace function public.is_approved_in(cls text) returns boolean
+  language sql stable security definer set search_path = public as $$
+    select exists (
+      select 1 from public.enrolments e
+      where e.class_id = cls
+        and e.student_id = public.clerk_uid()
+        and e.status = 'approved'
+    )
+  $$;
 
 
 -- ---------------------------------------------------------------------------

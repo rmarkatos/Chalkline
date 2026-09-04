@@ -13,7 +13,8 @@ for f in test.js test-text.js test-raw.js test-parser.js test-focus.js \
          test-delims.js test-app-editor.js test-graph.js \
          test-class.js test-push.js test-persist.js test-late.js \
          test-presence.js test-notes.js test-tabs.js test-wipe.js \
-         test-rules.js test-auth.js test-firebase.js test-phone.js; do
+         test-rules.js test-auth.js test-firebase.js test-phone.js \
+         test-schema.js; do
   [ -n "$filter" ] && case "$f" in *"$filter"*) ;; *) continue;; esac
   out=$(node "$f" 2>&1)
   line=$(printf '%s' "$out" | grep -ioE "[0-9]+ passed, [0-9]+ failed|[0-9]+/[0-9]+ passed|ALL ROUND-TRIPS CLEAN" | tail -1)
