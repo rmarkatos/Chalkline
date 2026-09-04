@@ -385,3 +385,12 @@ begin
 end $$;
 
 grant execute on function public.sweep_stale(text, int) to authenticated;
+
+
+-- The clock everybody counts down from. A timer set by the teacher has to
+-- mean the same instant on every screen, including a student who joins
+-- halfway through, so nobody trusts their own device clock.
+create or replace function public.server_now() returns timestamptz
+  language sql stable as $$ select now() $$;
+
+grant execute on function public.server_now() to authenticated;

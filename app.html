@@ -722,6 +722,11 @@ button{font:inherit;color:inherit}
         border:0; padding:0; margin:0; font-size:16px; z-index:-1;
         background:transparent; color:transparent; resize:none}
 .note{font-size:12px; color:var(--muted); margin:10px 20px 20px; max-width:70ch}
+
+/* a person waiting to be let into the class */
+.waitrow{display:flex;align-items:center;gap:.6rem;padding:.35rem 0;flex-wrap:wrap}
+.waitrow .hintline{flex:1 1 14rem;min-width:0}
+.waitrow .btn{flex:0 0 auto}
 </style>
 
 
@@ -771,6 +776,34 @@ button{font:inherit;color:inherit}
   </div>
 </div>
 
+<!-- Shown after a student signs in: which class are you in, and then
+     the wait while the teacher lets them in. Only ever used when accounts
+     are switched on. -->
+<div class="screen" id="viewSplash" hidden>
+  <div class="join">
+    <h1>Chalkline</h1>
+    <p class="joinsub">Typing mathematics made user friendly
+      <span class="ver">v28</span></p>
+
+    <div id="splashPick">
+      <p class="joinsub" id="splashHello"></p>
+      <p class="signwhy">Which class are you in?</p>
+      <div class="joinbtns" id="classPick"></div>
+    </div>
+
+    <div id="splashWait" hidden>
+      <p class="signwhy" id="waitMsg"></p>
+      <p class="signmsg">You can leave this page open. It will let you in by
+        itself once your teacher approves you &mdash; no need to refresh.</p>
+    </div>
+
+    <p class="signmsg" id="splashMsg"></p>
+    <div class="joinbtns">
+      <button class="btn" id="splashOut">Sign out</button>
+    </div>
+  </div>
+</div>
+
 <div class="screen" id="viewTeacher" hidden>
   <div class="topbar">
     <div class="brand">
@@ -782,6 +815,7 @@ button{font:inherit;color:inherit}
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
       <span class="clock" id="tClock" hidden></span>
+      <button class="btn" id="tWaiting" hidden>Waiting</button>
       <button class="btn" id="tPush">Push a problem</button>
       <button class="btn" id="tClose">Close the board</button>
       <button class="btn" id="tLeave">Leave</button>
@@ -794,6 +828,12 @@ button{font:inherit;color:inherit}
       <input id="tLink" readonly>
       <button class="btn" id="tCopy">Copy</button>
       <span class="hintline">Anyone opening this link can only join as a student.</span>
+    </div>
+    <!-- Students who have asked to join this class. Only ever shown when
+         accounts are on, and only when somebody is actually waiting. -->
+    <div class="joinlink" id="waitPanel" hidden>
+      <span class="plabel">Waiting to join</span>
+      <div id="waitRows"></div>
     </div>
     <div class="tiles" id="tiles"></div>
     <p class="empty" id="tEmpty">No student has joined <b id="tEmptyRoom"></b> yet.
@@ -915,6 +955,17 @@ button{font:inherit;color:inherit}
 /* Declared up here because render() publishes, and render() runs long before
    the sharing section below is reached. */
 let sync = null, role = null, myRoom = "", myName = "", myId = "";
+/* Accounts. Declared here for the same reason as everything else in this
+   block: render() and the screen switcher touch them during start-up, long
+   before section 9 is reached. */
+const CLERK_CONFIG = window.CHALKLINE_CLERK || {};
+const SUPA_CONFIG  = window.CHALKLINE_SUPABASE || {};
+/* With no settings — which is every test run — the app keeps its old
+   behaviour: type a class code, type a name, no sign-in. */
+const USE_ACCOUNTS = !!(CLERK_CONFIG.publishableKey && SUPA_CONFIG.url);
+let clerk = null, supa = null;
+let myEnrolments = [], amTeacher = false, pendingList = [];
+const CLASS_NAMES = {};
 let editorTarget = {mode:"idle"};
 let pubTimer = null, heartbeat = null, agoTimer = null;
 /* Opening a panel loads content into the editor, which renders, which would
@@ -4240,7 +4291,237 @@ function FirebaseSync(room, role){
   };
 }
 
+/* ---- the same interface, over Supabase -------------------------------------
+   The app speaks in messages; a database speaks in state. This is the same
+   adapter job FirebaseSync does, against Postgres rather than Firebase.
+
+   Two differences worth knowing, because they are not oversights:
+
+   There is no onDisconnect. Firebase could be told "if this tab vanishes,
+   delete this row" and would honour it server-side. Postgres cannot. It
+   turns out not to matter: a board carries a heartbeat and the wall already
+   sweeps anything that has not beaten for 30 seconds, so a closed tab tidies
+   itself up exactly as before — the sweep was doing the real work all along.
+
+   A student is no longer one-tab-one-identity. That was a workaround for
+   anonymous sign-in handing out one id per browser. With real accounts a
+   student is a person, so two tabs are the same student and share a board,
+   which is what anyone would expect.
+   --------------------------------------------------------------------------- */
+function SupabaseSync(classId, asRole){
+  const handlers = {};
+  const queue = [];
+  let uid = null, offset = 0, dead = false, ready = false;
+  const channels = [];
+  const readyCbs = [];
+
+  const fire = (type, msg) => {
+    if(dead) return;
+    (handlers[type] || []).forEach(f => {
+      try{ f(msg); }catch(err){ reportError("handling " + type, err); }
+    });
+  };
+
+  // Every write is checked. A silent refusal is what makes a board look
+  // connected and dead, which is the worst way for this to fail.
+  const W = (what, p) => {
+    Promise.resolve(p).then(r => {
+      if(r && r.error) reportError("writing " + what, r.error);
+    }).catch(err => reportError("writing " + what, err));
+    return p;
+  };
+
+  const boardMsg = r => ({id:r.student_id, name:r.name || "student",
+                          lines:r.lines || [], ids:r.ids || [],
+                          at: r.at ? Date.parse(r.at) : Date.now()});
+
+  function doSend(type, p){
+    if(!ready || dead) return;
+    if(type === "hello") return;                 // a database needs no roll-call
+    const T = supa.from.bind(supa);
+    if(type === "board"){
+      W("your board", T("boards").upsert({
+        class_id: classId, student_id: uid, name: p.name || "student",
+        lines: p.lines || [], ids: p.ids || [], at: new Date().toISOString()
+      }, {onConflict: "class_id,student_id"}));
+    }
+    else if(type === "feedback"){
+      W("feedback", T("feedback").upsert({
+        class_id: classId, student_id: p.id,
+        lines: p.lines || [], notes: p.notes || {}, at: new Date().toISOString()
+      }, {onConflict: "class_id,student_id"}));
+    }
+    else if(type === "check"){
+      W("the checkmark", T("checks").upsert({
+        class_id: classId, student_id: p.id, checked: !!p.on
+      }, {onConflict: "class_id,student_id"}));
+    }
+    else if(type === "problem"){
+      W("the problem", T("problems").upsert({
+        class_id: classId, items: p.items || [], at: new Date().toISOString()
+      }, {onConflict: "class_id"}));
+    }
+    else if(type === "timer"){
+      if(!p.seconds) W("the timer", T("timers").delete().eq("class_id", classId));
+      else W("the timer", T("timers").upsert({
+        class_id: classId,
+        ends_at: new Date(Date.now() + offset + p.seconds * 1000).toISOString()
+      }, {onConflict: "class_id"}));
+    }
+    else if(type === "end"){
+      W("ending", T("sessions").upsert({
+        class_id: classId, closed_at: new Date().toISOString(), ended: true
+      }, {onConflict: "class_id"}));
+    }
+    else if(type === "close"){
+      W("close", T("sessions").upsert({
+        class_id: classId, closed_at: new Date().toISOString(), ended: false
+      }, {onConflict: "class_id"}));
+      W("close", T("problems").delete().eq("class_id", classId));
+      W("close", T("timers").delete().eq("class_id", classId));
+      W("close", T("feedback").delete().eq("class_id", classId));
+      W("close", T("checks").delete().eq("class_id", classId));
+    }
+  }
+
+  const sub = (name, table, filter, fn) => {
+    const ch = supa.channel(name + "-" + classId + "-" + Math.random().toString(36).slice(2,7))
+      .on("postgres_changes",
+          Object.assign({event:"*", schema:"public", table}, filter ? {filter} : {}),
+          fn)
+      .subscribe();
+    channels.push(ch);
+    return ch;
+  };
+
+  (async () => {
+    setConn("connecting");
+    await ensureAccounts();
+    if(!clerk.user) throw new Error("not signed in");
+    uid = clerk.user.id;
+
+    // one clock everybody counts down from
+    try{
+      const t0 = Date.now();
+      const r = await supa.rpc("server_now");
+      if(r.data) offset = Date.parse(r.data) - (t0 + Date.now()) / 2;
+    }catch(e){ offset = 0; }
+
+    let lastClosed = 0, sawClosed = false;
+    const readClosed = row => {
+      const t = row && row.closed_at ? Date.parse(row.closed_at) : 0;
+      const ended = !!(row && row.ended);
+      if(!sawClosed){ sawClosed = true; lastClosed = t; return; }
+      if(t && t !== lastClosed){ lastClosed = t; fire("close", {ended}); }
+    };
+
+    if(asRole === "teacher"){
+      const seen = new Set();
+      const pullBoards = async () => {
+        const r = await supa.from("boards").select("*").eq("class_id", classId);
+        if(r.error) return reportError("reading the wall", r.error);
+        const now = new Set();
+        (r.data || []).forEach(b => { now.add(b.student_id); seen.add(b.student_id);
+                                      fire("board", boardMsg(b)); });
+        seen.forEach(id => { if(!now.has(id)){ seen.delete(id); fire("gone", {id}); } });
+      };
+      await pullBoards();
+      sub("wall", "boards", "class_id=eq." + classId, payload => {
+        if(payload.eventType === "DELETE"){
+          const id = payload.old && payload.old.student_id;
+          if(id){ seen.delete(id); fire("gone", {id}); }
+        } else if(payload.new){ seen.add(payload.new.student_id); fire("board", boardMsg(payload.new)); }
+      });
+
+      const fb = await supa.from("feedback").select("*").eq("class_id", classId);
+      (fb.data || []).forEach(f => fire("feedback", {id:f.student_id, lines:f.lines || [], notes:f.notes || {}}));
+      sub("fb", "feedback", "class_id=eq." + classId, pl => {
+        const r = pl.new && pl.new.student_id ? pl.new : pl.old;
+        if(!r) return;
+        fire("feedback", pl.eventType === "DELETE"
+             ? {id:r.student_id, lines:[], notes:{}}
+             : {id:r.student_id, lines:r.lines || [], notes:r.notes || {}});
+      });
+
+      const ck = await supa.from("checks").select("*").eq("class_id", classId);
+      (ck.data || []).forEach(c => fire("check", {id:c.student_id, on: !!c.checked}));
+      sub("ck", "checks", "class_id=eq." + classId, pl => {
+        const r = pl.new && pl.new.student_id ? pl.new : pl.old;
+        if(!r) return;
+        fire("check", {id:r.student_id, on: pl.eventType === "DELETE" ? false : !!r.checked});
+      });
+    } else {
+      const mine = "class_id=eq." + classId;
+      const fb = await supa.from("feedback").select("*").eq("class_id", classId).eq("student_id", uid);
+      const f0 = (fb.data || [])[0];
+      fire("feedback", {id:uid, lines:(f0 && f0.lines) || [], notes:(f0 && f0.notes) || {}});
+      sub("myfb", "feedback", mine, pl => {
+        const r = pl.new && pl.new.student_id ? pl.new : pl.old;
+        if(!r || r.student_id !== uid) return;
+        fire("feedback", pl.eventType === "DELETE"
+             ? {id:uid, lines:[], notes:{}}
+             : {id:uid, lines:r.lines || [], notes:r.notes || {}});
+      });
+
+      const ck = await supa.from("checks").select("*").eq("class_id", classId).eq("student_id", uid);
+      fire("check", {id:uid, on: !!((ck.data || [])[0] || {}).checked});
+      sub("myck", "checks", mine, pl => {
+        const r = pl.new && pl.new.student_id ? pl.new : pl.old;
+        if(!r || r.student_id !== uid) return;
+        fire("check", {id:uid, on: pl.eventType === "DELETE" ? false : !!r.checked});
+      });
+    }
+
+    const pr = await supa.from("problems").select("*").eq("class_id", classId);
+    fire("problem", {items: asProblems(((pr.data || [])[0] || {}).items)});
+    sub("prob", "problems", "class_id=eq." + classId, pl => {
+      fire("problem", {items: asProblems(pl.eventType === "DELETE" ? null : (pl.new || {}).items)});
+    });
+
+    const tm = await supa.from("timers").select("*").eq("class_id", classId);
+    const sendTimer = row => {
+      if(!row || !row.ends_at) return fire("timer", {seconds:0});
+      fire("timer", {seconds: Math.max(0,
+        Math.round((Date.parse(row.ends_at) - (Date.now() + offset)) / 1000))});
+    };
+    sendTimer((tm.data || [])[0]);
+    sub("tmr", "timers", "class_id=eq." + classId,
+        pl => sendTimer(pl.eventType === "DELETE" ? null : pl.new));
+
+    const ss = await supa.from("sessions").select("*").eq("class_id", classId);
+    readClosed((ss.data || [])[0]);
+    sub("sess", "sessions", "class_id=eq." + classId,
+        pl => readClosed(pl.eventType === "DELETE" ? null : pl.new));
+
+    ready = true;
+    setConn("online");
+    readyCbs.forEach(f => f(uid));
+    queue.splice(0).forEach(([t, p]) => doSend(t, p));
+  })().catch(err => {
+    dead = true;
+    setConn("failed", err && err.message);
+    reportError("connecting", err);
+  });
+
+  return {
+    on(type, fn){ (handlers[type] = handlers[type] || []).push(fn); },
+    send(type, payload){ ready ? doSend(type, payload) : queue.push([type, payload]); },
+    ready(fn){ uid && ready ? fn(uid) : readyCbs.push(fn); },
+    close(){
+      dead = true;
+      channels.splice(0).forEach(c => { try{ supa.removeChannel(c); }catch(e){} });
+      if(uid) try{ supa.from("boards").delete()
+                       .eq("class_id", classId).eq("student_id", uid); }catch(e){}
+    },
+    wipe(){ return supa.rpc("end_lesson", {cls: classId}); },
+    now(){ return Date.now() + offset; },
+    drop(id){ return supa.from("boards").delete()
+                         .eq("class_id", classId).eq("student_id", id); }
+  };
+}
+
 function makeSync(room, role){
+  if(USE_ACCOUNTS) return SupabaseSync(room, role);
   return FIREBASE_CONFIG.apiKey ? FirebaseSync(room, role) : LocalSync(room);
 }
 
@@ -4272,6 +4553,7 @@ const ckMap  = new Map();              // id -> checkmark
 
 const screens = {
   landing: document.getElementById("viewLanding"),
+  splash:  document.getElementById("viewSplash"),
   board:   document.getElementById("viewBoard"),
   teacher: document.getElementById("viewTeacher")
 };
@@ -4390,11 +4672,18 @@ function join(asRole, room, name){
 
   } else {
     editorTarget = {mode:"idle"};
-    document.getElementById("tRoom").textContent = "Class " + myRoom;
+    document.getElementById("tRoom").textContent =
+      USE_ACCOUNTS ? (CLASS_NAMES[myRoom] || myRoom) : "Class " + myRoom;
     document.getElementById("tLink").value =
       location.origin + location.pathname + "#room=" + encodeURIComponent(myRoom) + "&role=student";
     document.getElementById("tEmptyRoom").textContent = myRoom;
     showScreen("teacher");
+    if(USE_ACCOUNTS){
+      // with accounts there is no code to share — a student signs in and asks
+      document.querySelector("#viewTeacher .joinlink").hidden = true;
+      renderWaiting();
+      watchWaiting();
+    }
     sync.on("board", m => {
       // a leftover board from an earlier session is not a student in the room
       const when = m.at || Date.now();
@@ -5238,6 +5527,17 @@ if(location.protocol === "file:"){
 (async function fromHash(){
   showScreen("landing");
   paintSignIn();                     // hides the sign-out button in local mode
+
+  /* With accounts on there is no class code and no name box: everybody signs
+     in, and who they are decides what they see. The old landing screen is
+     never shown, so none of the code below runs. */
+  if(USE_ACCOUNTS){
+    document.getElementById("splashOut").onclick = () => clerk && clerk.signOut();
+    try{ await startAccounts(); }
+    catch(err){ reportError("signing in", err); }
+    return;
+  }
+
   await watchAuth();
   const h = new URLSearchParams(location.hash.replace(/^#/, ""));
   const r = h.get("role");
@@ -5276,6 +5576,273 @@ window.__chalkboard = {
 };
 
 /* test hook */
+/* ===========================================================================
+   9. Accounts — Clerk signs people in, Supabase decides what they may see
+
+   Chalkline used to let anyone with the class code walk in. It does not any
+   more. A student makes an account, says which class they are in, and waits
+   for the teacher to let them in. The class code is gone: the roster is the
+   gate now.
+
+   None of this runs unless both settings blocks at the top of the file are
+   filled in. Empty means the old behaviour — a class code and a name — which
+   is what every test suite drives, so the suites never touch a real account.
+
+   Two services, and it matters which does what:
+     Clerk     proves who somebody is, and hands over a signed token
+     Supabase  reads that token and applies the rules in supabase-schema.sql
+
+   The browser holds only publishable keys. Everything that decides access
+   lives in the database, where a student cannot reach it.
+   ========================================================================= */
+
+function loadScript(src){
+  return new Promise((res, rej) => {
+    const el = document.createElement("script");
+    el.src = src; el.async = true;
+    el.onload = () => res();
+    el.onerror = () => rej(new Error("could not load " + src));
+    document.head.appendChild(el);
+  });
+}
+
+/* Bring up Clerk and Supabase, once. Supabase is told to ask Clerk for a
+   fresh token on every request rather than being handed one, so a token
+   going stale mid-lesson fixes itself instead of logging a student out. */
+let accountsReady = null;
+function ensureAccounts(){
+  if(accountsReady) return accountsReady;
+  accountsReady = (async () => {
+    await loadScript("https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js");
+    clerk = new window.Clerk(CLERK_CONFIG.publishableKey);
+    await clerk.load({ afterSignOutUrl: location.pathname });
+
+    await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2");
+    supa = window.supabase.createClient(SUPA_CONFIG.url, SUPA_CONFIG.publishableKey, {
+      accessToken: async () => {
+        try { return clerk.session ? await clerk.session.getToken() : null; }
+        catch(e){ return null; }
+      }
+    });
+    return {clerk, supa};
+  })();
+  return accountsReady;
+}
+
+function myEmail(){
+  const u = clerk && clerk.user;
+  return u ? ((u.primaryEmailAddress && u.primaryEmailAddress.emailAddress) || "") : "";
+}
+function myDisplayName(){
+  const u = clerk && clerk.user;
+  if(!u) return "student";
+  return (u.fullName || u.firstName || myEmail().split("@")[0] || "student").trim();
+}
+
+/* Who is this, and where do they belong? One round trip each. */
+async function readMe(){
+  const t = await supa.rpc("is_teacher");
+  amTeacher = t.data === true;
+  const e = await supa.from("enrolments").select("class_id,status");
+  myEnrolments = e.data || [];
+  return {amTeacher, myEnrolments};
+}
+
+async function classList(){
+  const r = await supa.from("classes").select("id,name,sort").order("sort");
+  (r.data || []).forEach(c => { CLASS_NAMES[c.id] = c.name; });
+  return r.data || [];
+}
+
+/* ---- the student's side ------------------------------------------------ */
+
+async function askToJoin(classId){
+  const msg = document.getElementById("splashMsg");
+  msg.textContent = "";
+  const row = {
+    class_id: classId,
+    student_id: clerk.user.id,
+    student_name: myDisplayName(),
+    student_email: myEmail(),
+    status: "pending"
+  };
+  const r = await supa.from("enrolments").insert(row);
+  if(r.error){
+    // asking twice is not an error worth showing — they are already waiting
+    if(!/duplicate|unique/i.test(r.error.message || "")){
+      msg.textContent = "Could not send that: " + r.error.message;
+      return;
+    }
+  }
+  await refreshSplash();
+}
+
+function showSplashWaiting(className){
+  document.getElementById("splashPick").hidden = true;
+  document.getElementById("splashWait").hidden = false;
+  document.getElementById("waitMsg").textContent =
+    "You have asked to join " + className + ". Waiting for your teacher to let you in.";
+}
+
+async function refreshSplash(){
+  const classes = await classList();
+  const byId = {}; classes.forEach(c => byId[c.id] = c.name);
+  await readMe();
+
+  const approved = myEnrolments.filter(e => e.status === "approved");
+  if(approved.length){
+    // already in a class — straight to the board
+    join("student", approved[0].class_id, myDisplayName());
+    return;
+  }
+  const waiting = myEnrolments.filter(e => e.status === "pending");
+  if(waiting.length){
+    showSplashWaiting(byId[waiting[0].class_id] || waiting[0].class_id);
+    return;
+  }
+  const removed = myEnrolments.filter(e => e.status === "removed");
+
+  document.getElementById("splashPick").hidden = false;
+  document.getElementById("splashWait").hidden = true;
+  document.getElementById("splashHello").textContent = "Signed in as " + myEmail();
+  const pick = document.getElementById("classPick");
+  pick.innerHTML = "";
+  classes.forEach(c => {
+    if(removed.some(r => r.class_id === c.id)) return;   // cannot re-ask
+    const b = document.createElement("button");
+    b.className = "btn big on";
+    b.textContent = c.name;
+    b.onclick = () => askToJoin(c.id);
+    pick.appendChild(b);
+  });
+  if(!pick.children.length){
+    document.getElementById("splashMsg").textContent =
+      "There is no class here for you to join. Ask your teacher.";
+  }
+}
+
+/* A student left waiting should not have to refresh. Supabase pushes the row
+   back when the teacher approves it, and the rules mean a student is only
+   ever sent their own. */
+function watchMyEnrolment(){
+  if(!supa || !clerk || !clerk.user) return;
+  supa.channel("me-" + clerk.user.id)
+      .on("postgres_changes",
+          {event: "*", schema: "public", table: "enrolments",
+           filter: "student_id=eq." + clerk.user.id},
+          () => refreshSplash())
+      .subscribe();
+}
+
+/* ---- the teacher's side ------------------------------------------------ */
+
+async function loadPending(){
+  const r = await supa.from("enrolments")
+                      .select("id,class_id,student_name,student_email,asked_at")
+                      .eq("status", "pending")
+                      .order("asked_at");
+  pendingList = r.data || [];
+  return pendingList;
+}
+
+async function decideEnrolment(id, approved){
+  return supa.from("enrolments")
+             .update({status: approved ? "approved" : "removed",
+                      decided_at: new Date().toISOString()})
+             .eq("id", id);
+}
+
+/* The teacher belongs to every class, so they choose a wall rather than
+   asking to join one. Same screen, different buttons. */
+async function teacherPickClass(){
+  const classes = await classList();
+  showScreen("splash");
+  document.getElementById("splashPick").hidden = false;
+  document.getElementById("splashWait").hidden = true;
+  document.getElementById("splashHello").textContent = "Signed in as " + myEmail();
+  document.querySelector("#splashPick .signwhy").textContent = "Which class are you teaching?";
+  const pick = document.getElementById("classPick");
+  pick.innerHTML = "";
+  const waiting = await loadPending();
+  classes.forEach(c => {
+    const n = waiting.filter(w => w.class_id === c.id).length;
+    const b = document.createElement("button");
+    b.className = "btn big on";
+    b.textContent = c.name + (n ? "  (" + n + " waiting)" : "");
+    b.onclick = () => join("teacher", c.id, "");
+    pick.appendChild(b);
+  });
+}
+
+/* ---- the approvals queue on the wall ----------------------------------- */
+
+/* Redraw the "waiting to join" panel. Called when the wall opens and again
+   whenever a request arrives, so a student who signs in mid-lesson appears
+   without the teacher reloading anything. */
+async function renderWaiting(){
+  if(!USE_ACCOUNTS || !amTeacher || !supa) return;
+  const panel = document.getElementById("waitPanel");
+  const rows  = document.getElementById("waitRows");
+  const btn   = document.getElementById("tWaiting");
+  if(!panel || !rows) return;
+
+  const all = await loadPending();
+  const here = all.filter(w => w.class_id === myRoom);
+
+  btn.hidden = !here.length;
+  btn.textContent = here.length === 1 ? "1 waiting" : here.length + " waiting";
+  panel.hidden = !here.length;
+  rows.innerHTML = "";
+
+  here.forEach(w => {
+    const row = document.createElement("div");
+    row.className = "waitrow";
+    const who = document.createElement("span");
+    who.className = "hintline";
+    who.textContent = (w.student_name || "A student") + " · " + (w.student_email || "");
+    const yes = document.createElement("button");
+    yes.className = "btn on";
+    yes.textContent = "Approve";
+    const no = document.createElement("button");
+    no.className = "btn";
+    no.textContent = "Not in this class";
+    const settle = async ok => {
+      yes.disabled = no.disabled = true;
+      const r = await decideEnrolment(w.id, ok);
+      if(r && r.error) reportError("deciding who is in the class", r.error);
+      await renderWaiting();
+    };
+    yes.onclick = () => settle(true);
+    no.onclick  = () => settle(false);
+    row.append(who, yes, no);
+    rows.appendChild(row);
+  });
+}
+
+/* The teacher should not have to refresh either. */
+let waitChannel = null;
+function watchWaiting(){
+  if(!USE_ACCOUNTS || !amTeacher || !supa) return;
+  if(waitChannel) try{ supa.removeChannel(waitChannel); }catch(e){}
+  waitChannel = supa.channel("waiting-" + myRoom)
+    .on("postgres_changes",
+        {event: "*", schema: "public", table: "enrolments"},
+        () => renderWaiting())
+    .subscribe();
+}
+
+/* ---- start-up ---------------------------------------------------------- */
+
+async function startAccounts(){
+  await ensureAccounts();
+  if(!clerk.user){ clerk.openSignIn({}); return; }
+  await readMe();
+  if(amTeacher){ await teacherPickClass(); return; }
+  showScreen("splash");
+  watchMyEnrolment();
+  await refreshSplash();
+}
+
 window.__chalkline = {
   tex: () => lines.map(l => l.kind==="math" ? texList(l.root) : "%"+l.text).join("\n"),
   type: s => { for(const c of s) typeChar(c); render(); },
