@@ -5735,19 +5735,26 @@ async function tokenClaims(){
   }catch(e){ return null; }
 }
 
+/* Say plainly what is in the token and what is missing from it. Three things
+   have to line up and each fails differently, so guessing between them costs
+   a round trip every time. */
 async function diagnose(){
   const c = await tokenClaims();
   if(!c) return "Signed in, but no token is reaching the database.";
   const bits = [];
+  bits.push("issuer " + (c.iss || "(none)"));
+  bits.push("role " + (c.role || "(missing)"));
+  bits.push("email " + (c.email || "(missing)"));
+  const notes = [];
   if(c.role !== "authenticated")
-    bits.push("the token does not say role=authenticated, so the database " +
-              "treats you as a stranger — finish Clerk's \u201cConnect with " +
-              "Supabase\u201d setup");
+    notes.push("Without role=authenticated the database treats you as a " +
+               "stranger \u2014 finish Clerk\u2019s \u201cConnect with Supabase\u201d setup.");
   if(!c.email)
-    bits.push("the token carries no email address, so you cannot be matched " +
-              "against the teacher list — add email to Clerk\u2019s session token");
-  return bits.length ? bits.join(". ") + "."
-                     : "The token looks right (role and email both present).";
+    notes.push("Without an email in the token you cannot be matched against " +
+               "the teacher list \u2014 add email to Clerk\u2019s session token.");
+  if(c.iss && SUPA_CONFIG.url && !/clerk/i.test(c.iss))
+    notes.push("The issuer does not look like your Clerk domain.");
+  return "Token says: " + bits.join(", ") + ". " + notes.join(" ");
 }
 
 async function readMe(){
@@ -5829,10 +5836,12 @@ async function refreshSplash(){
     b.onclick = () => askToJoin(c.id);
     pick.appendChild(b);
   });
+  const msg = document.getElementById("splashMsg");
   if(!pick.children.length){
-    const msg = document.getElementById("splashMsg");
     msg.textContent = "No classes came back. " + (await diagnose());
     if(lastAccountsError) msg.textContent += "  (" + lastAccountsError + ")";
+  } else if(lastAccountsError){
+    msg.textContent = lastAccountsError;
   }
 }
 
