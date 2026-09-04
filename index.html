@@ -5866,10 +5866,16 @@ function watchMyEnrolment(){
 
 async function loadPending(){
   const r = await supa.from("enrolments")
-                      .select("id,class_id,student_name,student_email,asked_at")
+                      .select("id,class_id,student_id,student_name,student_email,asked_at")
                       .eq("status", "pending")
                       .order("asked_at");
-  pendingList = r.data || [];
+  noteError("reading who is waiting", r.error);
+  /* Never list yourself. A teacher who signs in before being recognised as
+     one is shown the student splash and can quite reasonably ask to join
+     their own class; that request should not then turn up in their own
+     approvals queue asking them to approve themselves. */
+  const meId = clerk && clerk.user ? clerk.user.id : null;
+  pendingList = (r.data || []).filter(w => w.student_id !== meId);
   return pendingList;
 }
 
