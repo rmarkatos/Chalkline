@@ -11,3 +11,6 @@ node_modules/
 chalkline-local.json
 # the ready-to-run SQL that build.py fills in from it
 supabase-schema.local.sql
+
+# scratch page test-boot.js writes beside itself
+_boot.html

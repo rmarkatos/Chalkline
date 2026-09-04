@@ -966,6 +966,12 @@ const USE_ACCOUNTS = !!(CLERK_CONFIG.publishableKey && SUPA_CONFIG.url);
 let clerk = null, supa = null;
 let myEnrolments = [], amTeacher = false, pendingList = [];
 const CLASS_NAMES = {};
+/* These two live up here for the reason the comment above says: boot() runs
+   before section 9 is reached, and a `let` that has not been reached yet
+   throws "Cannot access X before initialization" — a blank page, or in this
+   case an error banner. That has now happened five times. */
+let accountsReady = null;
+let waitChannel = null;
 let editorTarget = {mode:"idle"};
 let pubTimer = null, heartbeat = null, agoTimer = null;
 /* Opening a panel loads content into the editor, which renders, which would
@@ -5532,9 +5538,22 @@ if(location.protocol === "file:"){
      in, and who they are decides what they see. The old landing screen is
      never shown, so none of the code below runs. */
   if(USE_ACCOUNTS){
+    /* Put the class-code screen away first and leave it away. It no longer
+       does anything — the roster is the gate — so showing it because sign-in
+       failed would just hand somebody a door that opens onto nothing. */
+    showScreen("splash");
+    document.getElementById("splashPick").hidden = true;
+    document.getElementById("splashWait").hidden = true;
+    document.getElementById("splashMsg").textContent = "Signing you in\u2026";
     document.getElementById("splashOut").onclick = () => clerk && clerk.signOut();
-    try{ await startAccounts(); }
-    catch(err){ reportError("signing in", err); }
+    try{
+      await startAccounts();
+      document.getElementById("splashMsg").textContent = "";
+    }catch(err){
+      document.getElementById("splashMsg").textContent =
+        "Could not reach the sign-in service. Check your connection and reload.";
+      reportError("signing in", err);
+    }
     return;
   }
 
@@ -5609,7 +5628,6 @@ function loadScript(src){
 /* Bring up Clerk and Supabase, once. Supabase is told to ask Clerk for a
    fresh token on every request rather than being handed one, so a token
    going stale mid-lesson fixes itself instead of logging a student out. */
-let accountsReady = null;
 function ensureAccounts(){
   if(accountsReady) return accountsReady;
   accountsReady = (async () => {
@@ -5820,7 +5838,6 @@ async function renderWaiting(){
 }
 
 /* The teacher should not have to refresh either. */
-let waitChannel = null;
 function watchWaiting(){
   if(!USE_ACCOUNTS || !amTeacher || !supa) return;
   if(waitChannel) try{ supa.removeChannel(waitChannel); }catch(e){}
