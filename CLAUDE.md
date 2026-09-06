@@ -283,6 +283,20 @@ deliberate, not a stopgap:
 If Realtime is ever made to work, keep the polling. It is cheap and it cannot
 silently stop.
 
+**Polling has a cost: every handler must treat a repeat as a repeat.** The
+sync layer announces the *same* state every 2.5s. Two bugs came from
+handlers that treated each announcement as news: `startTimer` began by
+unlocking, so once a timer ran out the board unlocked every 2.5s and
+students kept typing; and the problem handler re-showed the strip every
+2.5s after a student clicked Hide. Now a timer carries `endsAt` as its
+identity and `startTimer` ignores one it has already heard; `seconds:0`
+*with* an `endsAt` means "ran out" (lock, and stay locked) while
+`seconds:0` without one means "no timer" (unlock). The problem handler
+compares `stripKey()` before and after and only acts on a change. **A new
+problem is what unlocks a board whose time ran out** — that is Ryan's rule.
+`asProblems` takes the whole row, as it took the whole Firebase node;
+handing it just `.items` made every pushed problem invisible.
+
 **Graphing.** Students state *key features* — asymptote, intercepts, base — and
 the curve is drawn from them; the equation appears only when they ask for it,
 so it confirms their algebra. One family so far: **logarithmic**.

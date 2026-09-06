@@ -151,6 +151,21 @@ const FAKE_CLERK = `window.CHALKLINE_CLERK = {
   pl = await plan([{class_id:'algebra2', status:'approved'}, {class_id:'apcalcab', status:'approved'}]);
   chk('a student in two classes gets two open rows', pl.every(x => x.kind === 'open') && pl.length === 2);
 
+  /* The timer, as the sync layer now announces it: the same timer every few
+     seconds, carrying its end time as identity. Hearing a timer again must
+     not restart it, and a timer that has run out must lock the board and
+     keep it locked. The first polling build unlocked the board every 2.5s
+     once time was up, which is how students kept typing. */
+  await p.evaluate(() => window.__chalkline.asStudent());
+  await p.evaluate(() => window.__chalkline.timer(0, 1000));           // ran out
+  chk('a timer that has run out locks the board', await p.evaluate(() => window.__chalkline.locked()));
+  await p.evaluate(() => window.__chalkline.timer(0, 1000));           // heard again
+  chk('hearing the same expired timer again keeps it locked', await p.evaluate(() => window.__chalkline.locked()));
+  await p.evaluate(() => window.__chalkline.timer(0));                 // no timer at all
+  chk('clearing the timer unlocks', !(await p.evaluate(() => window.__chalkline.locked())));
+  await p.evaluate(() => window.__chalkline.timer(30, 2000));          // a fresh one
+  chk('a running timer does not lock', !(await p.evaluate(() => window.__chalkline.locked())));
+
   await browser.close();
   try { fs.unlinkSync(TEMP); } catch (e) {}
 

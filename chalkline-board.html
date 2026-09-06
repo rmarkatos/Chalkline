@@ -4562,7 +4562,9 @@ function SupabaseSync(classId, asRole){
        only version that is always the whole thing. */
     const pullProblem = async () => {
       const r = await supa.from("problems").select("*").eq("class_id", classId);
-      fire("problem", {items: asProblems(((r.data || [])[0] || {}).items)});
+      // the whole row — asProblems reads .items itself, exactly as it read the
+      // whole Firebase node. Handing it only the array made it see nothing.
+      fire("problem", {items: asProblems((r.data || [])[0])});
     };
     await pullProblem();
     pulls.push(pullProblem);
@@ -4571,8 +4573,13 @@ function SupabaseSync(classId, asRole){
     const tm = await supa.from("timers").select("*").eq("class_id", classId);
     const sendTimer = row => {
       if(!row || !row.ends_at) return fire("timer", {seconds:0});
-      fire("timer", {seconds: Math.max(0,
-        Math.round((Date.parse(row.ends_at) - (Date.now() + offset)) / 1000))});
+      const endsAt = Date.parse(row.ends_at);
+      // endsAt is the timer's identity: the poll announces the same timer
+      // every few seconds, and startTimer must be able to tell it is the
+      // same one. seconds:0 WITH an endsAt means "ran out", which locks;
+      // seconds:0 without one means "no timer", which unlocks.
+      fire("timer", {seconds: Math.max(0, Math.round((endsAt - (Date.now() + offset)) / 1000)),
+                     endsAt});
     };
     const pullTimer = async () => {
       const r = await supa.from("timers").select("*").eq("class_id", classId);
@@ -4766,10 +4773,20 @@ function join(asRole, room, name){
 
     sync.on("problem", m => {
       // problems are prompts to read, not something typed into their work
+      const before = stripKey();
       problemItems = m.items;
+      showStrip();
+      // the sync layer announces the same problem every few seconds; only a
+      // different one is news
+      if(stripKey() === before) return;
       document.getElementById("probStrip").classList.remove("collapsed");
       document.getElementById("probToggle").textContent = "Hide";
-      showStrip();
+      // Ryan's rule: when the clock runs out a student can change nothing
+      // until the next problem arrives. This is the next problem arriving.
+      if(isLocked() && problemItems.length){
+        timerEnd = 0; timerId = null; clearInterval(timerTick); timerTick = null;
+        setLocked(false); paintClock();
+      }
     });
     sync.on("feedback", m => {
       if(m.id !== myId) return;
@@ -4783,7 +4800,7 @@ function join(asRole, room, name){
       myCheck = !!m.on;
       showTick();
     });
-    sync.on("timer", m => startTimer(m.seconds));
+    sync.on("timer", m => startTimer(m.seconds, m.endsAt));
     sync.on("close", m => {
       if(m && m.ended){ leave(); return; }     // the teacher ended the session
       startTimer(0);
@@ -4883,7 +4900,7 @@ function leave(){
   sync = null; role = null; boards.clear(); fbMap.clear(); ckMap.clear();
   clearTimeout(flushTimer); flushTimer = null; dirtyTiles.clear();
   tileEls.forEach(el => el.remove()); tileEls.clear();
-  clearInterval(timerTick); timerTick = null; timerEnd = 0;
+  clearInterval(timerTick); timerTick = null; timerEnd = 0; timerId = null;
   problemItems = []; stripDrawn = null; showStrip();
   editorTarget = {mode:"idle"};
   location.hash = "";
@@ -5333,10 +5350,24 @@ function paintClock(){
   const bar = document.getElementById("composerBar");
   if(bar && !bar.hidden) refreshComposerClock();
 }
-function startTimer(seconds){
+let timerId = null;                  // which timer we are counting; null = none
+function startTimer(seconds, endsAt){
+  /* The sync layer re-reads its state every few seconds and announces the
+     timer each time. The same timer heard again is not a new one — and a
+     new one is the only thing that should unlock the board. */
+  if(endsAt != null && endsAt === timerId) return;
+  timerId = endsAt == null ? null : endsAt;
   clearInterval(timerTick); timerTick = null;
+  if(!seconds){
+    if(endsAt != null){
+      // a timer that has already run out: time is up, and it stays up
+      timerEnd = Date.now() - 1; paintClock(); return;
+    }
+    // no timer at all — and nothing to do if there was none already
+    if(!timerEnd && !locked) return;
+    setLocked(false); timerEnd = 0; paintClock(); return;
+  }
   setLocked(false);
-  if(!seconds){ timerEnd = 0; paintClock(); return; }
   /* each client counts down from when it hears about it, so nothing depends on
      the clocks agreeing — over a network that matters more than it does here */
   timerEnd = Date.now() + seconds * 1000;
@@ -6189,6 +6220,9 @@ async function startAccounts(){
 
 window.__chalkline = {
   room: r => normalRoom(r),
+  asStudent: () => { role = "student"; },
+  timer: (s, e) => startTimer(s, e),
+  locked: () => isLocked(),
   plan: (c, e) => splashPlan(c, e),
   leave: () => leave(),
   accounts: () => USE_ACCOUNTS,
