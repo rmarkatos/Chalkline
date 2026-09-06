@@ -801,6 +801,15 @@ button{font:inherit;color:inherit}
         itself once your teacher approves you &mdash; no need to refresh.</p>
     </div>
 
+    <!-- After leaving a board, or after the teacher ends the lesson. Nobody
+         is sent back to a class-code screen: there is no such thing now. -->
+    <div id="splashLeft" hidden>
+      <p class="signwhy" id="leftMsg">You have left the board.</p>
+      <div class="joinbtns">
+        <button class="btn big on" id="splashRejoin">Open my board again</button>
+      </div>
+    </div>
+
     <p class="signmsg" id="splashMsg"></p>
     <div class="joinbtns">
       <button class="btn" id="splashOut">Sign out</button>
@@ -861,6 +870,7 @@ button{font:inherit;color:inherit}
     <button class="btn" id="clearAll">Clear board</button>
     <button class="btn" id="importBtn">Paste LaTeX</button>
     <button class="btn" id="leaveBtn" hidden>Leave</button>
+    <button class="btn" id="sSignOut" hidden>Sign out</button>
   </div>
 </div>
 <div class="lockbar" id="lockBar" hidden>
@@ -4749,6 +4759,7 @@ function join(asRole, room, name){
     editorTarget = {mode:"student"};
     document.querySelector("#viewBoard .brand .tag").textContent = myName + " · " + myRoom;
     document.getElementById("leaveBtn").hidden = false;
+    document.getElementById("sSignOut").hidden = !USE_ACCOUNTS;
     resetBoard(); render(); showScreen("board");
 
     sync.on("hello", publishNow);
@@ -4866,6 +4877,7 @@ function join(asRole, room, name){
   }
 }
 function leave(){
+  const wasTeacher = role === "teacher";
   clearInterval(heartbeat); clearInterval(agoTimer); clearTimeout(pubTimer);
   if(sync) sync.close();
   sync = null; role = null; boards.clear(); fbMap.clear(); ckMap.clear();
@@ -4876,8 +4888,24 @@ function leave(){
   editorTarget = {mode:"idle"};
   location.hash = "";
   document.getElementById("leaveBtn").hidden = true;
+  document.getElementById("sSignOut").hidden = true;
   document.getElementById("actingBar").hidden = true;
+  if(USE_ACCOUNTS){ afterLeave(wasTeacher); return; }
   showScreen("landing");
+}
+
+/* Where somebody goes after leaving a board, with accounts on. The teacher
+   goes back to choosing a class. A student is shown a resting place with a
+   way back in and a way out — and is NOT rejoined automatically, because
+   when the teacher ends a lesson the whole point of sending students out is
+   that they stop publishing while the room is wiped. */
+function afterLeave(wasTeacher){
+  if(wasTeacher){ teacherPickClass(); return; }
+  showScreen("splash");
+  document.getElementById("splashPick").hidden = true;
+  document.getElementById("splashWait").hidden = true;
+  document.getElementById("splashLeft").hidden = false;
+  document.getElementById("splashMsg").textContent = "";
 }
 
 /* ---- teacher: the wall of boards -------------------------------------- */
@@ -5661,7 +5689,13 @@ if(location.protocol === "file:"){
     document.getElementById("splashPick").hidden = true;
     document.getElementById("splashWait").hidden = true;
     document.getElementById("splashMsg").textContent = "Signing you in\u2026";
-    document.getElementById("splashOut").onclick = () => clerk && clerk.signOut();
+    const out = () => { if(clerk) clerk.signOut(); };
+    document.getElementById("splashOut").onclick = out;
+    document.getElementById("sSignOut").onclick = () => { leave(); out(); };
+    document.getElementById("splashRejoin").onclick = () => {
+      document.getElementById("splashLeft").hidden = true;
+      refreshSplash();
+    };
     try{
       await startAccounts();
       // only clear the "signing you in" line — not anything startAccounts
@@ -5925,6 +5959,7 @@ async function askToJoin(classId){
 
 function showSplashWaiting(className){
   document.getElementById("splashPick").hidden = true;
+  document.getElementById("splashLeft").hidden = true;
   document.getElementById("splashWait").hidden = false;
   document.getElementById("waitMsg").textContent =
     "You have asked to join " + className + ". Waiting for your teacher to let you in.";
@@ -5950,6 +5985,7 @@ async function refreshSplash(){
 
   document.getElementById("splashPick").hidden = false;
   document.getElementById("splashWait").hidden = true;
+  document.getElementById("splashLeft").hidden = true;
   document.getElementById("splashHello").textContent = "Signed in as " + myEmail();
   const pick = document.getElementById("classPick");
   pick.innerHTML = "";
@@ -5984,8 +6020,9 @@ function watchMyEnrolment(){
   // and ask anyway, for the same reason the wall does
   clearInterval(splashPoll);
   splashPoll = setInterval(() => {
-    if(!screens.splash.hidden) refreshSplash();
-    else { clearInterval(splashPoll); splashPoll = null; }
+    const resting = !document.getElementById("splashLeft").hidden;
+    if(!screens.splash.hidden && !resting) refreshSplash();
+    else if(screens.splash.hidden){ clearInterval(splashPoll); splashPoll = null; }
   }, 4000);
 }
 
@@ -6020,6 +6057,7 @@ async function teacherPickClass(){
   showScreen("splash");
   document.getElementById("splashPick").hidden = false;
   document.getElementById("splashWait").hidden = true;
+  document.getElementById("splashLeft").hidden = true;
   document.getElementById("splashHello").textContent = "Signed in as " + myEmail();
   document.querySelector("#splashPick .signwhy").textContent = "Which class are you teaching?";
   const pick = document.getElementById("classPick");
@@ -6114,6 +6152,7 @@ async function startAccounts(){
 
 window.__chalkline = {
   room: r => normalRoom(r),
+  leave: () => leave(),
   accounts: () => USE_ACCOUNTS,
   tex: () => lines.map(l => l.kind==="math" ? texList(l.root) : "%"+l.text).join("\n"),
   type: s => { for(const c of s) typeChar(c); render(); },

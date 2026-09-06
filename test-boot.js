@@ -123,6 +123,18 @@ const FAKE_CLERK = `window.CHALKLINE_CLERK = {
   const kept2 = await p.evaluate(() => window.__chalkline.room('apcalcab'));
   chk('and so does the other one', kept2 === 'apcalcab', 'got ' + JSON.stringify(kept2));
 
+  /* Leaving a board used to show the class-code screen, because leave()
+     ended with showScreen("landing") no matter what. A student who clicked
+     Leave landed on a form that no longer does anything. */
+  await p.evaluate(() => window.__chalkline.leave());
+  await p.waitForTimeout(200);
+  const landingAfterLeave = await p.evaluate(() => !document.getElementById('viewLanding').hidden);
+  chk('leaving a board never shows the class-code screen', !landingAfterLeave);
+  const restingShown = await p.evaluate(() => !document.getElementById('splashLeft').hidden);
+  chk('a student who leaves is given a way back in', restingShown);
+  const hasSignOut = await p.evaluate(() => !!document.getElementById('sSignOut'));
+  chk('the student board has a sign-out button', hasSignOut);
+
   await browser.close();
   try { fs.unlinkSync(TEMP); } catch (e) {}
 
