@@ -203,6 +203,22 @@ const FAKE_CLERK = `window.CHALKLINE_CLERK = {
   await p.evaluate(() => window.__chalkline.timer(30, 6000));
   chk('a fresh timer brings it back', !(await p.evaluate(() => window.__chalkline.stripExpired())));
 
+  /* The top bar stays put as the page scrolls. Same class on the wall. */
+  const barPos = await p.evaluate(() => getComputedStyle(document.querySelector('#viewBoard .topbar')).position);
+  chk('the top bar is sticky', barPos === 'sticky', 'position is ' + barPos);
+
+  /* "joined 10:42" next to a name on the wall: a clock time, minutes only,
+     and two moments a minute apart read differently. */
+  const t0 = Date.UTC(2026, 8, 4, 15, 7, 0);
+  const c1 = await p.evaluate(ms => window.__chalkline.clock(ms), t0);
+  const c2 = await p.evaluate(ms => window.__chalkline.clock(ms), t0 + 60000);
+  chk('the join time is a clock time', /\d{1,2}:\d{2}/.test(c1), JSON.stringify(c1));
+  chk('a minute later reads differently', c1 !== c2 && /\d{1,2}:\d{2}/.test(c2), c1 + ' vs ' + c2);
+  chk('the tile has a styled place for it', await p.evaluate(() =>
+    Array.from(document.styleSheets).some(ss => { try {
+      return Array.from(ss.cssRules).some(r => (r.selectorText || '') === '.tilehead .joined');
+    } catch (e) { return false; } })));
+
   await browser.close();
   try { fs.unlinkSync(TEMP); } catch (e) {}
 

@@ -160,6 +160,15 @@ async function tryQuery(db, sql, params) {
     `update public.boards set lines='["hacked"]'::jsonb where student_id='user_zoe' returning *`);
   chk('student CANNOT write another board', r.ok && r.rows.length === 0,
       r.ok ? 'changed ' + r.rows.length + ' rows' : r.err);
+  // joined_at is set once by the database and never moved by a later write
+  r = await tryQuery(db, `select joined_at from public.boards where student_id='user_amy'`);
+  const joined0 = r.ok && r.rows[0] ? String(r.rows[0].joined_at) : null;
+  chk('a board records when it was joined', !!joined0, r.err);
+  r = await tryQuery(db,
+    `update public.boards set lines='["more"]'::jsonb, at=now() where student_id='user_amy' returning joined_at`);
+  chk('writing more work does not move the join time',
+      r.ok && r.rows.length === 1 && String(r.rows[0].joined_at) === joined0,
+      r.ok ? String(r.rows[0] && r.rows[0].joined_at) + ' vs ' + joined0 : r.err);
   r = await tryQuery(db,
     `update public.enrolments set status='approved' where student_id='user_ben' returning *`);
   chk('student CANNOT approve anyone', !r.ok || r.rows.length === 0,

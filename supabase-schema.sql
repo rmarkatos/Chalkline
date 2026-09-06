@@ -85,6 +85,11 @@ create table if not exists public.boards (
   at         timestamptz not null default now(),
   primary key (class_id, student_id)
 );
+-- When this student opened the board. The app never sends this column, so
+-- an upsert sets it once on insert and leaves it alone on every update;
+-- a re-join after the row was swept is a new row and a new time. The wall
+-- shows it next to the name.
+alter table public.boards add column if not exists joined_at timestamptz not null default now();
 
 create table if not exists public.feedback (
   class_id   text not null references public.classes(id) on delete cascade,

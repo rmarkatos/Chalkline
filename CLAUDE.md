@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v29` at the time of writing). **Bump it in
+There is a version chip on screen (`v31` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -270,6 +270,15 @@ he is. The wall upserts `sessions.teacher_at` (and `teacher_name`, from
 out, and only about yourself) every 5s; students already poll that row, and
 `teacherPresent(row, now)` — pure, tested — counts under 20s as here.
 `stopTeacherBeat()` clears it on Leave so students see the change at once.
+
+**v30–v31.** When the clock runs out the problem strip fades (`.expired`,
+toggled where "time's up" is decided); a newly pushed problem glows and
+scrolls into view — `itemKeys()`/`newItemIndices()` are pure and tested,
+and use the same recipe as `stripKey()` so "changed" and "which" cannot
+disagree. The `.topbar` is sticky (same class on the board and the wall).
+Each wall tile shows *joined 10:42*: `boards.joined_at` is set by the
+database on insert and **never sent by the app**, so an upsert leaves it
+alone; a re-join after the row was swept is a new row and a new time.
 The display name lives in `chalkline-local.json` (`teacherName`) and is
 filled into the seed by `build.py` like the email. Also v29: class *names*
 in the student top bar (`roomLabel()`), the splash centred like the landing
