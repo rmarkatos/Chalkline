@@ -4110,6 +4110,13 @@ async function teacherSignIn(email, password){
   return cred.user;
 }
 async function signOutTeacher(){
+  /* With accounts on it is Clerk that holds the sign-in, not Firebase.
+     Clerk sends the page back to itself afterwards, which lands on the
+     sign-in screen. */
+  if(USE_ACCOUNTS){
+    if(clerk) await clerk.signOut();
+    return;
+  }
   if(!FIREBASE_CONFIG.apiKey) return;
   const F = await ensureFirebase();
   await F.U.signOut(F.auth);
@@ -4125,6 +4132,17 @@ const touchedRooms = new Set();
    one call: the boards, the feedback, the checkmarks, the problem, the timer,
    all of it gone. Nothing about a lesson is meant to outlive the lesson. */
 async function wipeRooms(rooms){
+  /* Same job, different database: end_lesson() erases the work for a class
+     and leaves the roster, and the rules only let a teacher call it. */
+  if(USE_ACCOUNTS){
+    if(!supa || !amTeacher) return;
+    for(const r of rooms){
+      if(!r) continue;
+      const res = await supa.rpc("end_lesson", {cls: r});
+      if(res && res.error) reportError("erasing " + r, res.error);
+    }
+    return;
+  }
   if(!FIREBASE_CONFIG.apiKey) return;
   const F = await ensureFirebase();
   // only a signed-in teacher may erase a room; asking without that is not a
