@@ -5690,6 +5690,7 @@ if(location.protocol === "file:"){
     document.getElementById("sSignOut").onclick = () => { leave(); out(); };
     document.getElementById("splashRejoin").onclick = () => {
       document.getElementById("splashLeft").hidden = true;
+      lastPlanKey = "";
       refreshSplash();
     };
     try{
@@ -5950,6 +5951,7 @@ async function askToJoin(classId){
       return;
     }
   }
+  lastPlanKey = "";
   await refreshSplash();
 }
 
@@ -5961,45 +5963,80 @@ function showSplashWaiting(className){
     "You have asked to join " + className + ". Waiting for your teacher to let you in.";
 }
 
+/* What the splash should offer this student, given the classes that exist
+   and where they stand in each. Pure, so it can be tested without a sign-in:
+
+     open     approved — a button that opens the board
+     waiting  asked, not yet let in — shown, not clickable
+     ask      neither — a button that asks to join
+     (absent) removed — not offered again
+
+   A student is never sent straight to a board any more. Ryan asked for the
+   choice to be shown every time, and it also means a student in two classes
+   is simply two "open" rows rather than a special case. */
+function splashPlan(classes, enrolments){
+  return (classes || []).map(c => {
+    const e = (enrolments || []).find(x => x.class_id === c.id);
+    const st = e ? e.status : null;
+    if(st === "approved") return {id:c.id, name:c.name, kind:"open"};
+    if(st === "pending")  return {id:c.id, name:c.name, kind:"waiting"};
+    if(st === "removed")  return null;
+    return {id:c.id, name:c.name, kind:"ask"};
+  }).filter(Boolean);
+}
+
+let lastPlanKey = "";
 async function refreshSplash(){
   const classes = await classList();
-  const byId = {}; classes.forEach(c => byId[c.id] = c.name);
   await readMe();
+  const plan = splashPlan(classes, myEnrolments);
 
-  const approved = myEnrolments.filter(e => e.status === "approved");
-  if(approved.length){
-    // already in a class — straight to the board
-    join("student", approved[0].class_id, myDisplayName());
+  // nothing to click and something pending: the plain waiting screen
+  if(!plan.some(x => x.kind !== "waiting") && plan.some(x => x.kind === "waiting")){
+    lastPlanKey = "";
+    showSplashWaiting(plan.find(x => x.kind === "waiting").name);
     return;
   }
-  const waiting = myEnrolments.filter(e => e.status === "pending");
-  if(waiting.length){
-    showSplashWaiting(byId[waiting[0].class_id] || waiting[0].class_id);
-    return;
-  }
-  const removed = myEnrolments.filter(e => e.status === "removed");
+
+  // the poll calls this every few seconds; do not rebuild buttons somebody
+  // may be about to click unless something actually changed
+  const key = JSON.stringify(plan) + "|" + lastAccountsError;
+  const pickShown = !document.getElementById("splashPick").hidden;
+  if(key === lastPlanKey && pickShown) return;
+  lastPlanKey = key;
 
   document.getElementById("splashPick").hidden = false;
   document.getElementById("splashWait").hidden = true;
   document.getElementById("splashLeft").hidden = true;
   document.getElementById("splashHello").textContent = "Signed in as " + myEmail();
+  document.querySelector("#splashPick .signwhy").textContent =
+    plan.some(x => x.kind === "open") ? "Your classes" : "Which class are you in?";
+
   const pick = document.getElementById("classPick");
   pick.innerHTML = "";
-  classes.forEach(c => {
-    if(removed.some(r => r.class_id === c.id)) return;   // cannot re-ask
+  plan.forEach(x => {
     const b = document.createElement("button");
-    b.className = "btn big on";
-    b.textContent = c.name;
-    b.onclick = () => askToJoin(c.id);
+    if(x.kind === "open"){
+      b.className = "btn big on";
+      b.textContent = "Open " + x.name;
+      b.onclick = () => join("student", x.id, myDisplayName());
+    } else if(x.kind === "ask"){
+      b.className = "btn big";
+      b.textContent = "Ask to join " + x.name;
+      b.onclick = () => askToJoin(x.id);
+    } else {
+      b.className = "btn big";
+      b.disabled = true;
+      b.textContent = x.name + " \u2014 waiting for approval";
+    }
     pick.appendChild(b);
   });
+
   const msg = document.getElementById("splashMsg");
   if(!pick.children.length){
     msg.textContent = "No classes came back. " + (await diagnose());
     if(lastAccountsError) msg.textContent += "  (" + lastAccountsError + ")";
-  } else if(lastAccountsError){
-    msg.textContent = lastAccountsError;
-  }
+  } else msg.textContent = lastAccountsError || "";
 }
 
 /* A student left waiting should not have to refresh. Supabase pushes the row
@@ -6148,6 +6185,7 @@ async function startAccounts(){
 
 window.__chalkline = {
   room: r => normalRoom(r),
+  plan: (c, e) => splashPlan(c, e),
   leave: () => leave(),
   accounts: () => USE_ACCOUNTS,
   tex: () => lines.map(l => l.kind==="math" ? texList(l.root) : "%"+l.text).join("\n"),

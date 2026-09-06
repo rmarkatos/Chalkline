@@ -135,6 +135,22 @@ const FAKE_CLERK = `window.CHALKLINE_CLERK = {
   const hasSignOut = await p.evaluate(() => !!document.getElementById('sSignOut'));
   chk('the student board has a sign-out button', hasSignOut);
 
+  /* What the splash offers, given where a student stands. An approved
+     student used to be sent straight to the board with no choice shown;
+     Ryan wants the choice every time. */
+  const classes = [{id:'algebra2', name:'Algebra 2'}, {id:'apcalcab', name:'AP Calculus AB'}];
+  const plan = (enr) => p.evaluate(([c, e]) => window.__chalkline.plan(c, e), [classes, enr]);
+  let pl = await plan([{class_id:'algebra2', status:'approved'}]);
+  chk('an approved class is offered to OPEN, not auto-joined',
+      pl.length === 2 && pl[0].kind === 'open' && pl[0].id === 'algebra2', JSON.stringify(pl));
+  chk('the other class can still be asked for', pl[1].kind === 'ask', JSON.stringify(pl));
+  pl = await plan([{class_id:'apcalcab', status:'pending'}]);
+  chk('a pending class shows as waiting', pl.find(x => x.id === 'apcalcab').kind === 'waiting');
+  pl = await plan([{class_id:'algebra2', status:'removed'}]);
+  chk('a removed class is not offered again', !pl.some(x => x.id === 'algebra2'), JSON.stringify(pl));
+  pl = await plan([{class_id:'algebra2', status:'approved'}, {class_id:'apcalcab', status:'approved'}]);
+  chk('a student in two classes gets two open rows', pl.every(x => x.kind === 'open') && pl.length === 2);
+
   await browser.close();
   try { fs.unlinkSync(TEMP); } catch (e) {}
 

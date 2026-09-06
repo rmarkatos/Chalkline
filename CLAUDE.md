@@ -245,10 +245,19 @@ itself spends it.
 **Accounts and the roster (v28).** Everybody signs in with Clerk — email and
 password, no Google, by Ryan's choice. A student picks **Algebra 2** or
 **AP Calculus AB** on a splash screen and waits; Ryan sees *N waiting* on his
-wall with Approve / Not in this class. A waiting student's page lets them in
-by itself. Approval is once, not per lesson. A removed student is not offered
-the class again. Ryan never appears in his own queue. Confirmed working with
-real students on other machines.
+wall with Approve / Not in this class. Approval is once, not per lesson. A
+removed student is not offered the class again. Ryan never appears in his own
+queue. Confirmed working with real students on other machines.
+
+**The splash always shows the choice.** An approved student is *not* sent
+straight to a board. `splashPlan(classes, enrolments)` — pure, tested in
+`test-boot.js` — decides what each class row is: **open** (approved),
+**waiting** (asked), **ask** (neither), absent (removed). Ryan asked for
+this after the first version auto-joined; it also makes a student in two
+classes just two open rows rather than a special case. The 4s splash poll
+only redraws when the plan changes, so buttons are not rebuilt under a
+finger. Leaving a board lands on a resting screen with *Open my board
+again* and *Sign out* — never the class-code form, which no longer exists.
 
 **Classroom.** The wall, push a problem (PNG or PDF, several stack up), a
 timer that locks input, feedback, per-line notes, a checkmark. All unchanged
