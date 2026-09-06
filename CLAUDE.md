@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v32` at the time of writing). **Bump it in
+There is a version chip on screen (`v33` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~590 assertions plus 500 generated round-trips.
+23 suites, ~610 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -300,8 +300,23 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 *Earlier work* unless the board was empty. Tiles show the workspace in use
 (`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
-teacher end to end. Ryan's next ask: **a checkmark per workspace** — the
-`checks` row becomes per-heading; not built yet.
+teacher end to end.
+
+**A checkmark per workspace (v33).** `checks.marks` is `{"Problem 1": true,
+…}` keyed by heading; `checked` stays as the whole-board tick for a board
+with no headings. The big **Mark correct** button marks the workspace the
+student is in now (`currentLabel`); every heading in the open panel has its
+own `✓ mark` button (`setMark`); the tile shows *2/3 ✓* (`marksSummary`,
+pure); the student sees a ✓ on each marked heading (`myMarks`). The
+whole-board badge no longer lights for a board that has headings — the old
+suites `test-class`/`test-persist` were updated to look at the heading.
+
+**The Firebase path must carry marks too.** It stored a check as a bare
+boolean; a per-workspace mark went in and *nothing* came out, silently, on
+every suite that drives that path. A checks node is `{on, marks}` since v33
+and `readCheck()` accepts either shape. Lesson: a feature that exists only
+in one backend's shape is not a feature — every path that can carry the
+message has to carry all of it.
 
 **Classroom.** The wall, push a problem (PNG or PDF, several stack up), a
 timer that locks input, feedback, per-line notes, a checkmark. All unchanged

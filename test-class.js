@@ -63,8 +63,10 @@ const URL = F('chalkline-board.html');
 
   // --- 3. the tick ---------------------------------------------------------
   await teacher.click('#actingCheck'); await priya.waitForTimeout(500);
-  chk('tick pops up for the student', await priya.evaluate(()=>!document.getElementById('tickBadge').hidden));
-  chk('Sam has no tick', await sam.evaluate(()=>document.getElementById('tickBadge').hidden));
+  // a problem was pushed above, so Priya's board has a workspace: the mark
+  // lands on that heading (v33), not on the old whole-board badge
+  chk('tick pops up for the student', 1 === await priya.evaluate(()=>document.querySelectorAll('#viewBoard .line.part .partmark').length));
+  chk('Sam has no tick', 0 === await sam.evaluate(()=>document.querySelectorAll('#viewBoard .line.part .partmark').length));
   await teacher.click('#actingBack'); await teacher.waitForTimeout(200);
   chk('tick shows on the tile', (await teacher.evaluate(()=>document.querySelector('.tile').innerText)).includes('✓'));
 

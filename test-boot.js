@@ -219,6 +219,15 @@ const FAKE_CLERK = `window.CHALKLINE_CLERK = {
       return Array.from(ss.cssRules).some(r => (r.selectorText || '') === '.tilehead .joined');
     } catch (e) { return false; } })));
 
+  /* n/m marked, for the tile. */
+  const sm = (m, l) => p.evaluate(([a, b]) => window.__chalkline.summary(a, b), [m, l]);
+  let r1 = await sm({'Problem 1': true}, ['Earlier work', 'Problem 1', 'Problem 2']);
+  chk('one of three workspaces marked reads 1/3', r1.n === 1 && r1.m === 3, JSON.stringify(r1));
+  r1 = await sm({}, []);
+  chk('a board with no workspaces has nothing to count', r1.n === 0 && r1.m === 0, JSON.stringify(r1));
+  r1 = await sm({'Problem 9': true}, ['Problem 1']);
+  chk('a mark for a heading that is not there does not count', r1.n === 0 && r1.m === 1, JSON.stringify(r1));
+
   await browser.close();
   try { fs.unlinkSync(TEMP); } catch (e) {}
 

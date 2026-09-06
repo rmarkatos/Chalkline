@@ -461,6 +461,12 @@ button{font:inherit;color:inherit}
 .line.part:first-child .partlabel{margin-top:0; border-top:0}
 .board .line.frozen{opacity:.55; pointer-events:none}
 .board .line.frozen.part{opacity:.8}
+/* a mark on a workspace: a tick by its heading (student, panel), a button
+   in the panel to set it, and n/m on the tile */
+.partmark{margin-left:8px; color:var(--accent-ink); font-weight:600}
+.partmark-btn{margin-left:auto; font-size:11px; padding:1px 8px}
+.partmark-btn.on{border-color:var(--accent); color:var(--accent-ink); background:var(--accent-soft)}
+.line.part .partlabel{display:flex; align-items:center}
 .tile.stale{opacity:.55}
 .tile.stale .ago{color:var(--slot)}
 .tilebody{padding:8px 12px 12px; overflow:hidden; flex:1}
@@ -774,7 +780,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v32</span></p>
+      <span class="ver">v33</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -815,7 +821,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v32</span></p>
+      <span class="ver">v33</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -851,7 +857,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v32</span>
+      <span class="ver">v33</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -890,7 +896,7 @@ button{font:inherit;color:inherit}
     <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
-    <span class="ver">v32</span>
+    <span class="ver">v33</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -1553,6 +1559,10 @@ function render(){
       b.textContent = "";
       const h = document.createElement("div");
       h.className = "partlabel"; h.textContent = ln.p.label || "Problem";
+      if(myMarks[ln.p.label]){
+        const k = document.createElement("span"); k.className = "partmark"; k.textContent = "\u2713";
+        h.appendChild(k);
+      }
       body.appendChild(h);
     } else if(ln.kind === "graph"){
       row.__gid = ln.id;
@@ -3824,6 +3834,16 @@ function activeStart(){
   return 0;
 }
 function isFrozen(idx){ return idx < activeStart(); }
+/* The headings on a board, in order, from its lines-as-strings. */
+function headingLabels(arr){
+  return asLines(arr).filter(isPartText).map(t => { const pl = partFromText(t); return pl ? pl.p.label : ""; });
+}
+/* How many workspaces are marked, of how many: "1/3". */
+function marksSummary(marks, labels){
+  const m = (labels || []).length;
+  const n = (labels || []).filter(l => !!(marks || {})[l]).length;
+  return {n, m};
+}
 function workspaceLabel(idx){
   if(!idx || !idx.length) return "Problem";
   return idx.length === 1 ? "Problem " + (idx[0] + 1)
@@ -4320,6 +4340,11 @@ async function accountFor(role){
   return (await F.U.signInAnonymously(F.auth)).user;
 }
 
+/* A checks node is {on, marks} since v33, and a bare boolean before that. */
+function readCheck(v){
+  if(v && typeof v === "object") return {on: !!v.on, marks: (v.marks && typeof v.marks === "object") ? v.marks : {}};
+  return {on: !!v, marks: {}};
+}
 function FirebaseSync(room, role){
   const handlers = {};
   const queue = [];
@@ -4360,7 +4385,15 @@ function FirebaseSync(room, role){
     }
     else if(type === "feedback") W("feedback", d.set(d.ref(db, R + "/feedback/" + p.id),
                                        {lines:p.lines || [], notes:p.notes || {}}));
-    else if(type === "check")    W("the checkmark", d.set(d.ref(db, R + "/checks/" + p.id), !!p.on));
+    else if(type === "check"){
+      /* {on, marks}, not a bare boolean: a mark per workspace has to survive
+         the round trip through the database, and a backend that stored only
+         the boolean dropped every per-workspace mark on the floor. Heading
+         labels are keys here, so they must not contain . # $ / [ ] — none do. */
+      const marks = (p.marks && typeof p.marks === "object") ? p.marks : {};
+      W("the checkmark", d.set(d.ref(db, R + "/checks/" + p.id),
+        Object.keys(marks).length ? {on: !!p.on, marks} : {on: !!p.on}));
+    }
     else if(type === "problem")  W("the problem", d.set(d.ref(db, R + "/problem"),
                                        {items:p.items || [], at:d.serverTimestamp()}));
     else if(type === "timer"){
@@ -4431,16 +4464,16 @@ function FirebaseSync(room, role){
       keep(d.onChildRemoved(fbRef, s => fire("feedback", {id:s.key, lines:[]}), E("feedback")));
 
       const ckRef = d.ref(db, R + "/checks");
-      const ckMsg = s => fire("check", {id:s.key, on: !!s.val()});
+      const ckMsg = s => fire("check", Object.assign({id:s.key}, readCheck(s.val())));
       keep(d.onChildAdded(ckRef, ckMsg, E("checks")));
       keep(d.onChildChanged(ckRef, ckMsg, E("checks")));
-      keep(d.onChildRemoved(ckRef, s => fire("check", {id:s.key, on:false}), E("checks")));
+      keep(d.onChildRemoved(ckRef, s => fire("check", {id:s.key, on:false, marks:{}}), E("checks")));
     } else {
       keep(d.onValue(d.ref(db, R + "/feedback/" + uid),
         s => fire("feedback", {id:uid, lines:(s.val() || {}).lines || [],
                                notes:(s.val() || {}).notes || {}}), E("your feedback")));
       keep(d.onValue(d.ref(db, R + "/checks/" + uid),
-        s => fire("check", {id:uid, on: !!s.val()}), E("your checkmark")));
+        s => fire("check", Object.assign({id:uid}, readCheck(s.val()))), E("your checkmark")));
     }
     keep(d.onValue(d.ref(db, R + "/problem"), s => fire("problem", {items:asProblems(s.val())}),
               E("the problem")));
@@ -4556,7 +4589,8 @@ function SupabaseSync(classId, asRole){
     }
     else if(type === "check"){
       W("the checkmark", T("checks").upsert({
-        class_id: classId, student_id: p.id, checked: !!p.on
+        class_id: classId, student_id: p.id, checked: !!p.on,
+        marks: (p.marks && typeof p.marks === "object") ? p.marks : {}
       }, {onConflict: "class_id,student_id"}));
     }
     else if(type === "problem"){
@@ -4655,14 +4689,15 @@ function SupabaseSync(classId, asRole){
 
       const pullChecks = async () => {
         const r = await supa.from("checks").select("*").eq("class_id", classId);
-        (r.data || []).forEach(c => fire("check", {id:c.student_id, on: !!c.checked}));
+        (r.data || []).forEach(c => fire("check", {id:c.student_id, on: !!c.checked, marks: c.marks || {}}));
       };
       await pullChecks();
       pulls.push(pullChecks);
       sub("ck", "checks", "class_id=eq." + classId, pl => {
         const r = pl.new && pl.new.student_id ? pl.new : pl.old;
         if(!r) return;
-        fire("check", {id:r.student_id, on: pl.eventType === "DELETE" ? false : !!r.checked});
+        fire("check", {id:r.student_id, on: pl.eventType === "DELETE" ? false : !!r.checked,
+                       marks: pl.eventType === "DELETE" ? {} : (r.marks || {})});
       });
     } else {
       const mine = "class_id=eq." + classId;
@@ -4683,14 +4718,16 @@ function SupabaseSync(classId, asRole){
 
       const pullMyCheck = async () => {
         const r = await supa.from("checks").select("*").eq("class_id", classId).eq("student_id", uid);
-        fire("check", {id:uid, on: !!((r.data || [])[0] || {}).checked});
+        fire("check", {id:uid, on: !!((r.data || [])[0] || {}).checked,
+                       marks: ((r.data || [])[0] || {}).marks || {}});
       };
       await pullMyCheck();
       pulls.push(pullMyCheck);
       sub("myck", "checks", mine, pl => {
         const r = pl.new && pl.new.student_id ? pl.new : pl.old;
         if(!r || r.student_id !== uid) return;
-        fire("check", {id:uid, on: pl.eventType === "DELETE" ? false : !!r.checked});
+        fire("check", {id:uid, on: pl.eventType === "DELETE" ? false : !!r.checked,
+                       marks: pl.eventType === "DELETE" ? {} : (r.marks || {})});
       });
     }
 
@@ -4847,6 +4884,7 @@ function setTeacherHere(here, name){
 const boards = new Map();              // id -> {id, name, lines, at}
 const fbMap  = new Map();              // id -> feedback lines, straight from the database
 const ckMap  = new Map();              // id -> checkmark
+const mkMap  = new Map();              // id -> {heading: true} marks per workspace
 
 const screens = {
   landing: document.getElementById("viewLanding"),
@@ -4973,14 +5011,16 @@ function join(asRole, room, name){
     sync.on("check", m => {
       if(m.id !== myId) return;
       myCheck = !!m.on;
+      myMarks = (m.marks && typeof m.marks === "object") ? m.marks : {};
       showTick();
+      render();                       // the ticks sit on the headings
     });
     sync.on("timer", m => startTimer(m.seconds, m.endsAt));
     sync.on("teacher", m => setTeacherHere(m.here, m.name));
     sync.on("close", m => {
       if(m && m.ended){ leave(); return; }     // the teacher ended the session
       startTimer(0);
-      problemItems = []; stripDrawn = null; myFeedback = []; myNotes = {}; myCheck = false;
+      problemItems = []; stripDrawn = null; myFeedback = []; myNotes = {}; myCheck = false; myMarks = {};
       showStrip(); showFeedback(); showTick();
       loadLines([]);
       flashBoard();
@@ -5023,6 +5063,7 @@ function join(asRole, room, name){
       boards.set(m.id, {id:m.id, name:m.name || "student", lines:asLines(m.lines),
                         ids:asLines(m.ids), at:m.at || Date.now(),
                         joinedAt: m.joinedAt || prev.joinedAt || null,
+                        marks: mkMap.get(m.id) || prev.marks || {},
                         feedback: fbMap.get(m.id) || prev.feedback || [],
                         check: ckMap.has(m.id) ? ckMap.get(m.id) : !!prev.check});
       if(editorTarget.mode === "feedback") refreshOpenBoard(m.id);
@@ -5049,10 +5090,12 @@ function join(asRole, room, name){
     });
     sync.on("check", m => {
       ckMap.set(m.id, !!m.on);
+      mkMap.set(m.id, (m.marks && typeof m.marks === "object") ? m.marks : {});
       const b = boards.get(m.id);
-      if(b) b.check = !!m.on;
-      if(editorTarget.mode === "feedback" && editorTarget.boardId === m.id)
-        document.getElementById("actingCheck").classList.toggle("checked", !!m.on);
+      if(b){ b.check = !!m.on; b.marks = mkMap.get(m.id); }
+      if(editorTarget.mode === "feedback" && editorTarget.boardId === m.id){
+        paintCheckButton(b); drawWorkPanel();
+      }
       updateTile(m.id);
     });
     // the teacher tracks the problem list too, so a new push adds to it
@@ -5064,7 +5107,10 @@ function join(asRole, room, name){
       const left = timerEnd - Date.now();
       if(left > 1000) sync.send("timer", {seconds: Math.round(left / 1000)});
       fbMap.forEach((lines, id) => { if(lines.length) sync.send("feedback", {id, lines}); });
-      ckMap.forEach((on, id) => { if(on) sync.send("check", {id, on:true}); });
+      ckMap.forEach((on, id) => {
+        const marks = mkMap.get(id) || {};
+        if(on || Object.keys(marks).length) sync.send("check", {id, on, marks});
+      });
     });
     touchedRooms.add(myRoom);
     sync.ready(() => sync.send("hello", {}));
@@ -5194,14 +5240,16 @@ function buildTile(b){
 function paintTile(tile, b, deferFit){
   tile.classList.toggle("stale", Date.now() - b.at > 25000);
   tile.__ago.textContent = ago(b.at);
-  const sig = b.name + "|" + (b.check ? "1" : "0") + "|" + (b.joinedAt || "");
+  const labels = headingLabels(b.lines);
+  const ms = marksSummary(b.marks, labels);
+  const sig = b.name + "|" + (b.check ? "1" : "0") + "|" + (b.joinedAt || "") + "|" + ms.n + "/" + ms.m;
   if(tile.__nameSig !== sig){
     tile.__nameSig = sig;
     tile.__name.textContent = b.name;
     tile.__joined.textContent = b.joinedAt ? "joined " + clockTime(b.joinedAt) : "";
-    if(b.check){
+    if(ms.m ? ms.n > 0 : b.check){
       const k = document.createElement("span");
-      k.className = "ticked"; k.textContent = "✓";
+      k.className = "ticked"; k.textContent = ms.m ? ms.n + "/" + ms.m + " ✓" : "✓";
       tile.__name.appendChild(k);
     }
   }
@@ -5311,7 +5359,7 @@ function openBoardNow(id, b){
   document.getElementById("workWho").textContent = b.name;
   document.getElementById("workPanel").hidden = false;
   drawWorkPanel();
-  document.getElementById("actingCheck").classList.toggle("checked", !!b.check);
+  paintCheckButton(b);
   document.querySelector("#viewBoard .brand .tag").textContent = b.name + " · " + roomLabel();
   holdPublish = true;
   loadLines(fbMap.get(id) || b.feedback || []);
@@ -5355,7 +5403,21 @@ function drawWorkPanel(){
 
     const body = document.createElement("div"); body.className = "linebody";
     const f = document.createElement("span"); f.className = "field";
-    if(isGraphText(t)){
+    if(isPartText(t)){
+      row.classList.add("part"); n.textContent = "";
+      const pl = partFromText(t);
+      const label = (pl && pl.p.label) || "Problem";
+      const h = document.createElement("div"); h.className = "partlabel";
+      h.textContent = label;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      const on = !!((b.marks || {})[label]);
+      btn.className = "btn partmark-btn" + (on ? " on" : "");
+      btn.textContent = on ? "\u2713 marked" : "\u2713 mark";
+      btn.addEventListener("click", e => { e.stopPropagation(); setMark(b, label, !on); });
+      h.appendChild(btn);
+      f.appendChild(h);
+    } else if(isGraphText(t)){
       const gl = graphFromText(t);
       const sol = gl ? solveGraph(gl.g) : {err:"?"};
       const tag = document.createElement("span");
@@ -5415,14 +5477,33 @@ function drawWorkPanel(){
   });
   fitDelims(host);
 }
+/* Marking. A board with workspaces is marked one workspace at a time; the
+   big button marks the one the student is in now, and each heading in the
+   panel has its own. A board with no workspaces keeps the single tick. */
+function currentLabel(b){ const ls = headingLabels(b.lines); return ls.length ? ls[ls.length - 1] : null; }
+function sendCheck(b){ sync.send("check", {id:b.id, on:b.check, marks:b.marks || {}}); }
+function setMark(b, label, on){
+  b.marks = Object.assign({}, b.marks || {});
+  if(on) b.marks[label] = true; else delete b.marks[label];
+  mkMap.set(b.id, b.marks);
+  sendCheck(b);
+  paintCheckButton(b); drawWorkPanel(); drawTiles();
+}
+function paintCheckButton(b){
+  const el = document.getElementById("actingCheck");
+  if(!b){ el.classList.remove("checked"); return; }
+  const cur = currentLabel(b);
+  const on = cur ? !!((b.marks || {})[cur]) : !!b.check;
+  el.classList.toggle("checked", on);
+  el.textContent = cur ? "\u2713 Mark " + cur + (on ? " (marked)" : " correct") : "\u2713 Mark correct";
+}
 document.getElementById("actingCheck").addEventListener("click", () => {
   if(editorTarget.mode !== "feedback") return;
   const b = boards.get(editorTarget.boardId);
   if(!b) return;
-  b.check = !b.check;
-  sync.send("check", {id:b.id, on:b.check});
-  document.getElementById("actingCheck").classList.toggle("checked", b.check);
-  drawTiles();
+  const cur = currentLabel(b);
+  if(cur){ setMark(b, cur, !((b.marks || {})[cur])); }
+  else { b.check = !b.check; sendCheck(b); paintCheckButton(b); drawTiles(); }
   refocusEditor();
 });
 document.getElementById("actingBack").addEventListener("click", () => {
@@ -5572,7 +5653,7 @@ function startTimer(seconds, endsAt){
 }
 
 /* ---- the problem, as students see it ----------------------------------- */
-let myFeedback = [], myCheck = false;
+let myFeedback = [], myCheck = false, myMarks = {};
 function stripKey(){
   return problemItems.map(it => (it.lines || []).join("\u0001") + "\u0002" +
                                 (it.images || []).length).join("\u0003");
@@ -6447,6 +6528,10 @@ async function startAccounts(){
 
 window.__chalkline = {
   room: r => normalRoom(r),
+  mode: () => editorTarget.mode,
+  teacherMarks: id => mkMap.get(id) || null,
+  marks: () => myMarks,
+  summary: (marks, labels) => marksSummary(marks, labels),
   clock: ms => clockTime(ms),
   newItems: (b, a) => newItemIndices(b, a),
   stripExpired: () => document.getElementById("probStrip").classList.contains("expired"),

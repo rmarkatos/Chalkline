@@ -68,8 +68,10 @@ const URL = F('_persist.html');
   chk('the student sees the feedback',
       (await priya.evaluate(()=>document.getElementById('fbLines').innerText)).includes('check'),
       await priya.evaluate(()=>document.getElementById('fbPanel').hidden));
+  // problems were pushed above, so the mark sits on the current workspace's
+  // heading (v33) rather than the whole-board badge
   chk('the student sees the checkmark',
-      !(await priya.evaluate(()=>document.getElementById('tickBadge').hidden)));
+      1 === await priya.evaluate(()=>document.querySelectorAll('#viewBoard .line.part .partmark').length));
 
   await teacher.click('#actingBack'); await teacher.waitForTimeout(400);
   await teacher.click('.tile'); await teacher.waitForTimeout(500);

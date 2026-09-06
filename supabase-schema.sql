@@ -106,6 +106,9 @@ create table if not exists public.checks (
   checked    boolean not null default false,
   primary key (class_id, student_id)
 );
+-- One mark per workspace, keyed by its heading: {"Problem 1": true, ...}.
+-- `checked` stays as the whole-board mark for a board with no headings.
+alter table public.checks add column if not exists marks jsonb not null default '{}'::jsonb;
 
 create table if not exists public.problems (
   class_id   text primary key references public.classes(id) on delete cascade,

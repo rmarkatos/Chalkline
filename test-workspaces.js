@@ -94,6 +94,26 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   });
   chk('the wall tile shows the workspace in use', !!tile && tile.head === 'Problem 2' && /z/.test(tile.text), JSON.stringify(tile));
 
+  // ---- marking one workspace at a time ------------------------------------
+  await teacher.click('#tiles .tile');                 // Priya sorts first
+  await teacher.waitForTimeout(400);
+  const btns = await teacher.evaluate(() => Array.from(document.querySelectorAll('#workLines .line.part .partmark-btn')).map(b => b.textContent));
+  chk('the open panel has a mark button on every heading', btns.length === 3, JSON.stringify(btns));
+  await teacher.evaluate(() => document.querySelectorAll('#workLines .line.part .partmark-btn')[1].click());   // Problem 1
+  await teacher.waitForTimeout(700);
+  let marks = await priya.evaluate(() => window.__chalkline.marks());
+  chk('the student receives the mark for Problem 1', marks['Problem 1'] === true && !marks['Problem 2'], JSON.stringify(marks));
+  const ticks = await priya.evaluate(() => Array.from(document.querySelectorAll('#viewBoard .line.part')).map(r => r.textContent.includes('\u2713')));
+  chk('the tick sits on the Problem 1 heading only', JSON.stringify(ticks) === '[false,true,false]', JSON.stringify(ticks));
+  const big = await teacher.evaluate(() => document.getElementById('actingCheck').textContent);
+  chk('the big button now marks the current workspace', /Problem 2/.test(big), big);
+  await teacher.click('#actingCheck'); await teacher.waitForTimeout(700);
+  marks = await priya.evaluate(() => window.__chalkline.marks());
+  chk('Mark correct marked Problem 2', marks['Problem 2'] === true && marks['Problem 1'] === true, JSON.stringify(marks));
+  await teacher.click('#actingBack'); await teacher.waitForTimeout(500);
+  const badge = await teacher.evaluate(() => { const k = document.querySelector('#tiles .tile .ticked'); return k ? k.textContent : null; });
+  chk('the tile counts marked workspaces', badge === '2/3 ✓', JSON.stringify(badge));
+
   // ---- clear board clears only the workspace in use -------------------------
   await priya.click('#clearAll');
   L = await raw(priya);
