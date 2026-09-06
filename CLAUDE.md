@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v33` at the time of writing). **Bump it in
+There is a version chip on screen (`v34` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -301,6 +301,13 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 (`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**Problems sit side by side (v34).** `.probbody` is a horizontal flex row,
+newest on the right, scrolling sideways when full; each `.probitem` is a
+fixed-width column and images are capped at 200px tall. The v30 "scroll to
+the new problem" uses `inline:"end"`. Reason: three stacked problems pushed
+the board off the bottom of the screen. `test-workspaces` asserts the
+second problem's box sits to the right of the first on the same row.
 
 **A checkmark per workspace (v33).** `checks.marks` is `{"Problem 1": true,
 …}` keyed by heading; `checked` stays as the whole-board tick for a board

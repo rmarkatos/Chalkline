@@ -630,12 +630,19 @@ button{font:inherit;color:inherit}
 .probhead .btn{margin-left:auto; padding:3px 9px; font-size:12px}
 .probimgs{display:flex; gap:12px; overflow-x:auto; padding-bottom:4px}
 .probimgs img{
-  max-height:260px; border:1px solid var(--line); border-radius:8px; background:#fff;
+  max-height:200px; max-width:100%; border:1px solid var(--line); border-radius:8px; background:#fff;
   flex:none;
 }
 .problemstrip.collapsed .probimgs{display:none}
-.probitem{display:flex; gap:10px; align-items:flex-start; padding:8px 0}
-.probitem + .probitem{border-top:1px dashed var(--line)}
+/* problems sit side by side, newest on the right, so the strip stays short
+   however many are pushed; it scrolls sideways when the row is full */
+.probbody{display:flex; flex-direction:row; align-items:flex-start; gap:14px;
+  overflow-x:auto; padding-bottom:6px; scrollbar-width:thin; scrollbar-color:var(--line) transparent}
+.probbody::-webkit-scrollbar{height:8px}
+.probbody::-webkit-scrollbar-thumb{background:var(--line); border-radius:8px}
+.probitem{display:flex; gap:10px; align-items:flex-start; flex:0 0 auto;
+  width:min(420px, 62vw); padding:2px 14px 2px 0; border-right:1px dashed var(--line)}
+.probitem:last-child{border-right:0; padding-right:0}
 /* when the clock runs out the problem fades back — it is over, and the
    next one will bring the strip back to full strength */
 .problemstrip{transition:opacity .6s ease}
@@ -784,7 +791,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v33</span></p>
+      <span class="ver">v34</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -825,7 +832,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v33</span></p>
+      <span class="ver">v34</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -861,7 +868,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v33</span>
+      <span class="ver">v34</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -900,7 +907,7 @@ button{font:inherit;color:inherit}
     <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
-    <span class="ver">v33</span>
+    <span class="ver">v34</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -4995,7 +5002,7 @@ function join(asRole, room, name){
       fresh.forEach(i => { if(kids[i]) kids[i].classList.add("fresh"); });
       const last = fresh.length ? kids[fresh[fresh.length - 1]] : null;
       if(last && last.scrollIntoView)
-        requestAnimationFrame(() => last.scrollIntoView({behavior:"smooth", block:"nearest"}));
+        requestAnimationFrame(() => last.scrollIntoView({behavior:"smooth", block:"nearest", inline:"end"}));
       // Ryan's rule: when the clock runs out a student can change nothing
       // until the next problem arrives. This is the next problem arriving.
       if(isLocked() && problemItems.length){

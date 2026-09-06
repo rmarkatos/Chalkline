@@ -87,6 +87,13 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   await priya.focus('#hidden'); await priya.keyboard.type('z=3');
   L = await raw(priya);
   chk('typing goes to workspace 2', L[5] === 'z=3', JSON.stringify(L));
+  // the two problems sit side by side, newest on the right (v34)
+  const boxes = await priya.evaluate(() => Array.from(document.querySelectorAll('#probBody .probitem'))
+    .map(el => { const r = el.getBoundingClientRect(); return {left: Math.round(r.left), top: Math.round(r.top), w: Math.round(r.width)}; }));
+  chk('two problems are shown', boxes.length === 2, JSON.stringify(boxes));
+  chk('problems sit side by side, newest on the right',
+      boxes.length === 2 && boxes[1].left > boxes[0].left + boxes[0].w - 1 && Math.abs(boxes[1].top - boxes[0].top) < 2,
+      JSON.stringify(boxes));
   await teacher.waitForTimeout(900);
   const tile = await teacher.evaluate(() => {
     const t = document.querySelector('#tiles .tile');
