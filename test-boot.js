@@ -187,6 +187,22 @@ const FAKE_CLERK = `window.CHALKLINE_CLERK = {
   chk('the "is logged in" label exists on the student board',
       await p.evaluate(() => !!document.getElementById('teacherHere')));
 
+  /* Which pushed problems are new — the ones that get highlighted and
+     scrolled to. Keys are per-item content; a repeat announcement of the
+     same set must find nothing new. */
+  const ni = (b, a) => p.evaluate(([x, y]) => window.__chalkline.newItems(x, y), [b, a]);
+  chk('a problem added on the end is the new one', JSON.stringify(await ni(['a'], ['a', 'b'])) === '[1]');
+  chk('the first problem ever is new', JSON.stringify(await ni([], ['a'])) === '[0]');
+  chk('the same set again is not news', JSON.stringify(await ni(['a', 'b'], ['a', 'b'])) === '[]');
+  chk('a replaced problem is new', JSON.stringify(await ni(['a'], ['b'])) === '[0]');
+
+  /* When the clock runs out the problem fades; a fresh timer brings it back. */
+  await p.evaluate(() => window.__chalkline.asStudent());
+  await p.evaluate(() => window.__chalkline.timer(0, 5000));
+  chk('time up fades the problem', await p.evaluate(() => window.__chalkline.stripExpired()));
+  await p.evaluate(() => window.__chalkline.timer(30, 6000));
+  chk('a fresh timer brings it back', !(await p.evaluate(() => window.__chalkline.stripExpired())));
+
   await browser.close();
   try { fs.unlinkSync(TEMP); } catch (e) {}
 

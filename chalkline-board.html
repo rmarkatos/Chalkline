@@ -619,6 +619,17 @@ button{font:inherit;color:inherit}
 .problemstrip.collapsed .probimgs{display:none}
 .probitem{display:flex; gap:10px; align-items:flex-start; padding:8px 0}
 .probitem + .probitem{border-top:1px dashed var(--line)}
+/* when the clock runs out the problem fades back — it is over, and the
+   next one will bring the strip back to full strength */
+.problemstrip{transition:opacity .6s ease}
+.problemstrip.expired{opacity:.35}
+/* a newly pushed problem glows for a moment so the eye lands on it */
+@keyframes probflash{
+  0%{background:var(--accent-soft); box-shadow:inset 3px 0 0 var(--accent)}
+  70%{background:var(--accent-soft); box-shadow:inset 3px 0 0 var(--accent)}
+  100%{background:transparent; box-shadow:inset 3px 0 0 transparent}
+}
+.probitem.fresh{animation:probflash 2.6s ease-out; border-radius:6px}
 .probinner{flex:1; min-width:0}
 .probnum{
   flex:none; width:20px; height:20px; margin-top:2px; border-radius:50%;
@@ -756,7 +767,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v29</span></p>
+      <span class="ver">v30</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -797,7 +808,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v29</span></p>
+      <span class="ver">v30</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -833,7 +844,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v29</span>
+      <span class="ver">v30</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -872,7 +883,7 @@ button{font:inherit;color:inherit}
     <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
-    <span class="ver">v29</span>
+    <span class="ver">v30</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -1000,6 +1011,20 @@ let accountsReady = null;
 let waitChannel = null;
 let waitPoll = null, splashPoll = null;
 let connState = "connecting", teacherHere = false, teacherHereName = "";
+/* One key per problem item, in order — the same recipe stripKey() uses for
+   the whole strip, so "changed" and "which one changed" cannot disagree. */
+function itemKeys(items){
+  return (items || []).map(it => (asLines(it.lines) || []).join("\u0001") + "\u0002" +
+                                 (asLines(it.images) || []).length);
+}
+/* Indices in `after` whose content was not in `before` — the problems the
+   teacher just pushed. Pure, so it can be tested. */
+function newItemIndices(beforeKeys, afterKeys){
+  const seen = new Set(beforeKeys || []);
+  const out = [];
+  (afterKeys || []).forEach((k, i) => { if(!seen.has(k)) out.push(i); });
+  return out;
+}
 let teacherBeat = null, myTeacherName = "";
 /* "AP Calculus AB", not "apcalcab" — the id is for the database */
 function roomLabel(){ return USE_ACCOUNTS ? (CLASS_NAMES[myRoom] || myRoom) : myRoom; }
@@ -4822,6 +4847,7 @@ function join(asRole, room, name){
     sync.on("problem", m => {
       // problems are prompts to read, not something typed into their work
       const before = stripKey();
+      const beforeKeys = itemKeys(problemItems);
       problemItems = m.items;
       showStrip();
       // the sync layer announces the same problem every few seconds; only a
@@ -4829,6 +4855,14 @@ function join(asRole, room, name){
       if(stripKey() === before) return;
       document.getElementById("probStrip").classList.remove("collapsed");
       document.getElementById("probToggle").textContent = "Hide";
+      // the strip was just rebuilt, one .probitem per item in order, so an
+      // index into problemItems is an index into its children
+      const fresh = newItemIndices(beforeKeys, itemKeys(problemItems));
+      const kids = document.getElementById("probBody").children;
+      fresh.forEach(i => { if(kids[i]) kids[i].classList.add("fresh"); });
+      const last = fresh.length ? kids[fresh[fresh.length - 1]] : null;
+      if(last && last.scrollIntoView)
+        requestAnimationFrame(() => last.scrollIntoView({behavior:"smooth", block:"nearest"}));
       // Ryan's rule: when the clock runs out a student can change nothing
       // until the next problem arrives. This is the next problem arriving.
       if(isLocked() && problemItems.length){
@@ -5396,6 +5430,9 @@ function paintClock(){
   if(role === "student"){
     showStrip();
     if(done && timerEnd) setLocked(true);
+    // the problem fades once its time is over; a fresh timer or the next
+    // problem brings it back (both run through here with done === false)
+    document.getElementById("probStrip").classList.toggle("expired", !!(done && timerEnd));
   }
   if(done){ clearInterval(timerTick); timerTick = null; }
   const bar = document.getElementById("composerBar");
@@ -6302,6 +6339,8 @@ async function startAccounts(){
 
 window.__chalkline = {
   room: r => normalRoom(r),
+  newItems: (b, a) => newItemIndices(b, a),
+  stripExpired: () => document.getElementById("probStrip").classList.contains("expired"),
   present: (row, now) => teacherPresent(row, now),
   asStudent: () => { role = "student"; },
   timer: (s, e) => startTimer(s, e),
