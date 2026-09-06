@@ -24,7 +24,7 @@ supporting. After any change:
 
 ```bash
 python3 build.py       # writes chalkline-board.html and index.html
-./run-tests.sh         # runs all 22 suites, prints one line each
+./run-tests.sh         # runs all 23 suites, prints one line each
 git push               # deploys — index.html on main IS the live site
 ```
 
@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v31` at the time of writing). **Bump it in
+There is a version chip on screen (`v32` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-22 suites, ~570 assertions plus 500 generated round-trips.
+23 suites, ~590 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -227,6 +227,10 @@ rules suites test yesterday's code.
   (`name+test1@gmail.com`) is a separate account to Clerk but lands in the
   same inbox, so the verification code is readable. Use a private window —
   a second tab shares the sign-in.
+- **`test-presence.js` failing once in a blue moon** — *"cleared out rather
+  than left lying around"*. It polls for a background removal; under the
+  load of a full run that occasionally took longer than the 3s it allowed.
+  It allows 6s now. That was the whole of a night's "flake".
 - **Supabase's live updates do not arrive.** Established in real use: the
   waiting queue stayed empty, a pushed picture never reached students (the
   timer did — it is small), and the wall stopped hearing about boards. The
@@ -283,6 +287,21 @@ The display name lives in `chalkline-local.json` (`teacherName`) and is
 filled into the seed by `build.py` like the email. Also v29: class *names*
 in the student top bar (`roomLabel()`), the splash centred like the landing
 box, and the palette scrollbar in theme tokens.
+
+**One workspace per pushed problem (v32).** A heading is a line of work that
+is a string — `"%%P {"label":"Problem 2"}"` — exactly like a graph line, so
+the sharing layer, the database and the wall carry it unchanged. Everything
+after the *last* heading is the workspace the student is in; everything
+before it is **frozen**: still on screen, greyed, `pointer-events:none`, and
+`typeChar`/`backspace` refuse it, ArrowUp stops at the first line of the
+workspace, `removeLine` never lands the caret on a heading, and *Clear
+board* clears only the workspace in use (`clearActive`). A new problem calls
+`openWorkspace(label)`: work done before the first problem is kept under
+*Earlier work* unless the board was empty. Tiles show the workspace in use
+(`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
+test hooks skips headings. `test-workspaces.js` drives two students and a
+teacher end to end. Ryan's next ask: **a checkmark per workspace** — the
+`checks` row becomes per-heading; not built yet.
 
 **Classroom.** The wall, push a problem (PNG or PDF, several stack up), a
 timer that locks input, feedback, per-line notes, a checkmark. All unchanged

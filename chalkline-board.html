@@ -457,6 +457,14 @@ button{font:inherit;color:inherit}
 .tilehead b{font-size:13px; font-weight:600}
 .tilehead .ago{font-size:10.5px; color:var(--muted); margin-left:auto; font-variant-numeric:tabular-nums}
 .tilehead .joined{font-size:10.5px; color:var(--muted); font-variant-numeric:tabular-nums}
+/* workspaces: a heading per pushed problem; everything above the last one
+   is frozen — still there, greyed, and nothing inside it can be reached */
+.line.part .linebody{padding:0}
+.partlabel{font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted);
+  padding:8px 0 2px; margin-top:8px; border-top:1px solid var(--line)}
+.line.part:first-child .partlabel{margin-top:0; border-top:0}
+.board .line.frozen{opacity:.55; pointer-events:none}
+.board .line.frozen.part{opacity:.8}
 .tile.stale{opacity:.55}
 .tile.stale .ago{color:var(--slot)}
 .tilebody{padding:8px 12px 12px; overflow:hidden; flex:1}
@@ -770,7 +778,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v31</span></p>
+      <span class="ver">v32</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -811,7 +819,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v31</span></p>
+      <span class="ver">v32</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -847,7 +855,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v31</span>
+      <span class="ver">v32</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -886,7 +894,7 @@ button{font:inherit;color:inherit}
     <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
-    <span class="ver">v31</span>
+    <span class="ver">v32</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -1542,8 +1550,15 @@ function render(){
 
     const body = document.createElement("div");
     body.className = "linebody";
+    if(isFrozen(idx)) row.classList.add("frozen");
 
-    if(ln.kind === "graph"){
+    if(ln.kind === "part"){
+      row.classList.add("part");
+      b.textContent = "";
+      const h = document.createElement("div");
+      h.className = "partlabel"; h.textContent = ln.p.label || "Problem";
+      body.appendChild(h);
+    } else if(ln.kind === "graph"){
       row.__gid = ln.id;
       body.appendChild(renderGraphBody(ln, true));
     } else if(ln.kind === "math"){
@@ -2115,6 +2130,7 @@ function typePending(k){
 const SCRIPTY = new Set(["sup", "sub", "bigop", "limop", "evbar"]);
 
 function typeChar(k){
+  if(isFrozen(focusLine)) return;            // that workspace is finished
   if(pending !== null){ typePending(k); return; }
 
   // "$" flips between words and mathematics, mid-line, the way it does in LaTeX
@@ -2223,6 +2239,7 @@ function typeChar(k){
 }
 
 function backspace(){
+  if(isFrozen(focusLine)) return;
   if(sel){ deleteSelection(); return; }
   const {list,i} = cur;
   if(i > 0){
@@ -2241,7 +2258,12 @@ function backspace(){
   if(!n){                                          // start of the whole line
     if(focusLine > 0){
       const prev = lines[focusLine-1];
-      if(list.length === 0 && lines.length > 1){ removeLine(focusLine); return; }
+      if(list.length === 0 && lines.length > 1){
+        // the first line of a workspace stays: deleting it would put the
+        // caret on the heading, or in the frozen section above
+        if(focusLine === activeStart() && activeStart() > 0) return;
+        removeLine(focusLine); return;
+      }
       if(prev.kind === "math"){ focusLine--; cur = {list:prev.root, i:prev.root.length}; }
     }
     return;
@@ -2277,6 +2299,10 @@ function removeLine(idx){
   if(lines.length === 1){ resetBoard(); render(); hidden.focus(); return; }
   lines.splice(idx,1);
   focusLine = Math.max(0, Math.min(idx-1, lines.length-1));
+  if(focusLine < activeStart()) focusLine = Math.min(activeStart(), lines.length - 1);
+  if(!lines[focusLine] || lines[focusLine].kind === "part"){
+    const nl = newMathLine(); lines.push(nl); focusLine = lines.length - 1;
+  }
   const ln = lines[focusLine];
   if(ln.kind === "math"){ cur = {list:ln.root, i:ln.root.length}; sel=null; render(); hidden.focus(); }
   else render();
@@ -2332,7 +2358,10 @@ hidden.addEventListener("keydown", e => {
 
   if(k === "ArrowRight"){ e.preventDefault(); if(e.shiftKey) extendSel(1); else { sel=null; moveRight(); syncMode(); } render(); return; }
   if(k === "ArrowLeft"){  e.preventDefault(); if(e.shiftKey) extendSel(-1); else { sel=null; moveLeft(); syncMode(); } render(); return; }
-  if(k === "ArrowUp"){    e.preventDefault(); sel=null; moveVert(-1); syncMode(); render(); return; }
+  if(k === "ArrowUp"){    e.preventDefault(); sel=null;
+    // up from the first line of a workspace stops there: above is frozen
+    if(!(focusLine <= activeStart() && cur.list === curLine().root)) moveVert(-1);
+    syncMode(); render(); return; }
   if(k === "ArrowDown"){  e.preventDefault(); sel=null; moveVert(1); syncMode(); render(); return; }
   if(k === "Home"){ e.preventDefault(); cur={list:cur.list,i:0}; sel=null; syncMode(); render(); return; }
   if(k === "End"){  e.preventDefault(); cur={list:cur.list,i:cur.list.length}; sel=null; syncMode(); render(); return; }
@@ -3103,7 +3132,7 @@ document.getElementById("addNote").addEventListener("click", () => {
 });
 document.getElementById("clearAll").addEventListener("click", () => {
   if(isLocked()) return;
-  resetBoard(); render(); hidden.focus();
+  clearActive(); render(); hidden.focus();
 });
 function toggleTheme(){
   const now = document.documentElement.getAttribute("data-theme");
@@ -3779,6 +3808,61 @@ function graphFromText(t){
   }catch(e){ return null; }
 }
 const isGraphText = t => typeof t === "string" && t.slice(0, 4) === "%%G ";
+
+/* ---- workspaces: one per pushed problem ----------------------------------
+   A heading is a line of work that is a string, exactly like a graph:
+   "%%P {"label":"Problem 2"}". % opens a comment in LaTeX, so it is metadata
+   by construction and the sharing layer never has to know. Everything after
+   the LAST heading is the workspace the student is in; everything before it
+   is frozen — still on screen, still on the wall, no longer editable. */
+function newPartLine(label){ return {id:newId(), kind:"part", p:{label:String(label || "")}}; }
+function partToText(pl){ return "%%P " + JSON.stringify(pl.p); }
+function partFromText(t){
+  try{ const p = JSON.parse(t.slice(4));
+       return {id:newId(), kind:"part", p:{label:String((p && p.label) || "")}}; }
+  catch(e){ return null; }
+}
+const isPartText = t => typeof t === "string" && t.slice(0, 4) === "%%P ";
+function activeStart(){
+  for(let i = lines.length - 1; i >= 0; i--) if(lines[i].kind === "part") return i + 1;
+  return 0;
+}
+function isFrozen(idx){ return idx < activeStart(); }
+function workspaceLabel(idx){
+  if(!idx || !idx.length) return "Problem";
+  return idx.length === 1 ? "Problem " + (idx[0] + 1)
+                          : "Problems " + (idx[0] + 1) + "\u2013" + (idx[idx.length - 1] + 1);
+}
+/* A new problem arrived: open a fresh workspace under everything so far.
+   Work done before the first problem is kept, under its own heading, unless
+   the board was empty — then no empty section is left behind. */
+function openWorkspace(label){
+  const empty = lines.length === 1 && lines[0].kind === "math" && lines[0].root.length === 0;
+  if(empty) lines.length = 0;
+  else if(!lines.some(l => l.kind === "part")) lines.unshift(newPartLine("Earlier work"));
+  const ln = newMathLine();
+  lines.push(newPartLine(label), ln);
+  focusLine = lines.length - 1;
+  cur = {list:ln.root, i:0}; sel = null; pending = null; textMode = false;
+  relink(); render();
+  if(typeof schedulePublish === "function") schedulePublish();
+  // after the problem strip has done its own scrolling, land on the new space
+  setTimeout(() => {
+    const rows = boardEl.querySelectorAll(".line");
+    const r = rows[rows.length - 1];
+    if(r && r.scrollIntoView) r.scrollIntoView({behavior:"smooth", block:"end"});
+    try{ hidden.focus(); }catch(e){}
+  }, 250);
+}
+/* Clear board clears the workspace the student is in, not the frozen ones. */
+function clearActive(){
+  const s = activeStart();
+  if(s === 0){ resetBoard(); return; }
+  lines.length = s;
+  const ln = newMathLine(); lines.push(ln);
+  focusLine = s; cur = {list:ln.root, i:0}; sel = null; pending = null; textMode = false;
+  relink();
+}
 
 /* ---- 6. what it looks like on the board --------------------------------
    Each feature box is a real maths field, edited through the same hidden
@@ -4784,7 +4868,8 @@ function showScreen(name){
 
 /* ---- moving whole boards in and out of the editor ---------------------- */
 function currentLines(){
-  return lines.map(l => l.kind === "graph" ? graphToText(l) : texList(l.root));
+  return lines.map(l => l.kind === "part"  ? partToText(l)
+                      : l.kind === "graph" ? graphToText(l) : texList(l.root));
 }
 /* Every line carries an id so a note can be pinned to THAT line and stay
    there when the student adds work above it. Ids are per-session, like
@@ -4793,6 +4878,7 @@ function currentIds(){ return lines.map(l => l.id); }
 function loadLines(arr){
   const src = asLines(arr);
   lines = (src.length ? src : [""]).map(t => {
+    if(isPartText(t)){ const pl = partFromText(t); if(pl) return pl; }
     if(isGraphText(t)){ const gl = graphFromText(t); if(gl) return gl; }
     const ln = newMathLine();
     if(t) ln.root.push(...parseTex(t).list);
@@ -4878,6 +4964,8 @@ function join(asRole, room, name){
         timerEnd = 0; timerId = null; clearInterval(timerTick); timerTick = null;
         setLocked(false); paintClock();
       }
+      // each pushed problem gets its own workspace; the old one freezes
+      if(fresh.length && problemItems.length) openWorkspace(workspaceLabel(fresh));
     });
     sync.on("feedback", m => {
       if(m.id !== myId) return;
@@ -5027,21 +5115,33 @@ function ago(ms){
   if(s < 60) return s + "s ago";
   return Math.round(s / 60) + "m ago";
 }
-function renderStatic(host, arr, deferFit){
+function renderStatic(host, arr, deferFit, view){
   host.textContent = "";
   const rows = asLines(arr).filter(t => t.trim());
+  // a tile shows the workspace the student is in; the open panel shows all
+  let shown = rows;
+  if(view === "active"){
+    let last = -1; rows.forEach((t, i) => { if(isPartText(t)) last = i; });
+    if(last >= 0) shown = rows.slice(last);
+  }
   if(!rows.length){
     const b = document.createElement("div");
     b.className = "blank"; b.textContent = "empty board";
     host.appendChild(b);
     return;
   }
-  rows.slice(0, 7).forEach((t, i) => {
+  shown.slice(0, 7).forEach((t, i) => {
     const row = document.createElement("div"); row.className = "line";
     const g = document.createElement("div"); g.className = "gutter";
     const n = document.createElement("b"); n.textContent = i + 1; g.appendChild(n);
     const body = document.createElement("div"); body.className = "linebody";
-    if(isGraphText(t)){
+    if(isPartText(t)){
+      row.classList.add("part"); n.textContent = "";
+      const pl = partFromText(t);
+      const h = document.createElement("div"); h.className = "partlabel";
+      h.textContent = (pl && pl.p.label) || "Problem";
+      body.appendChild(h);
+    } else if(isGraphText(t)){
       const gl = graphFromText(t);
       const sol = gl ? solveGraph(gl.g) : {err:"?"};
       if(sol.err){
@@ -5112,7 +5212,7 @@ function paintTile(tile, b, deferFit){
   const body = asLines(b.lines).join("\u0001");
   if(tile.__sig !== body){            // only re-typeset when the maths changed
     tile.__sig = body;
-    renderStatic(tile.__body, b.lines, deferFit);
+    renderStatic(tile.__body, b.lines, deferFit, "active");
   }
 }
 function drawTiles(){
@@ -6361,7 +6461,12 @@ window.__chalkline = {
   plan: (c, e) => splashPlan(c, e),
   leave: () => leave(),
   accounts: () => USE_ACCOUNTS,
-  tex: () => lines.map(l => l.kind==="math" ? texList(l.root) : "%"+l.text).join("\n"),
+  tex: () => lines.filter(l => l.kind !== "part").map(l => l.kind==="math" ? texList(l.root) : "%"+l.text).join("\n"),
+  linesRaw: () => currentLines(),
+  loadRaw: arr => loadLines(arr),
+  activeStart: () => activeStart(),
+  focusTo: i => { focusLine = i; const ln = lines[i];
+                  if(ln && ln.kind === "math") cur = {list:ln.root, i:ln.root.length}; render(); },
   type: s => { for(const c of s) typeChar(c); render(); },
   key: k => hidden.dispatchEvent(new KeyboardEvent("keydown", {key:k, bubbles:true, cancelable:true})),
   state: () => ({lines:lines.length, focus:focusLine, at:cur.i, len:cur.list.length}),

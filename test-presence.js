@@ -90,7 +90,10 @@ const URL = F('_pres.html');
   // the removal is a write and then a broadcast, so poll for it rather than
   // guessing at a sleep long enough to cover both
   let gone = false;
-  for(let i = 0; i < 20 && !gone; i++){
+  // 6s, not 3: under the load of the full run the write-then-broadcast has
+  // occasionally taken longer, and that is the whole of the flake this suite
+  // showed for a night (caught with full output on 2026-09-04)
+  for(let i = 0; i < 40 && !gone; i++){
     gone = await t.evaluate(()=>{
       const r = ((globalThis.__fakeStore||{}).rooms||{}).PRES||{};
       return !(r.boards||{})['ghost-uid'];
