@@ -4361,6 +4361,8 @@ function SupabaseSync(classId, asRole){
   const queue = [];
   let uid = null, offset = 0, dead = false, ready = false;
   const channels = [];
+  const pulls = [];              // everything that can re-read its own state
+  let pollTimer = null;
   const readyCbs = [];
 
   const fire = (type, msg) => {
@@ -4481,6 +4483,7 @@ function SupabaseSync(classId, asRole){
         seen.forEach(id => { if(!now.has(id)){ seen.delete(id); fire("gone", {id}); } });
       };
       await pullBoards();
+      pulls.push(pullBoards);
       sub("wall", "boards", "class_id=eq." + classId, payload => {
         if(payload.eventType === "DELETE"){
           const id = payload.old && payload.old.student_id;
@@ -4488,8 +4491,12 @@ function SupabaseSync(classId, asRole){
         } else if(payload.new){ seen.add(payload.new.student_id); fire("board", boardMsg(payload.new)); }
       });
 
-      const fb = await supa.from("feedback").select("*").eq("class_id", classId);
-      (fb.data || []).forEach(f => fire("feedback", {id:f.student_id, lines:f.lines || [], notes:f.notes || {}}));
+      const pullFeedback = async () => {
+        const r = await supa.from("feedback").select("*").eq("class_id", classId);
+        (r.data || []).forEach(f => fire("feedback", {id:f.student_id, lines:f.lines || [], notes:f.notes || {}}));
+      };
+      await pullFeedback();
+      pulls.push(pullFeedback);
       sub("fb", "feedback", "class_id=eq." + classId, pl => {
         const r = pl.new && pl.new.student_id ? pl.new : pl.old;
         if(!r) return;
@@ -4498,8 +4505,12 @@ function SupabaseSync(classId, asRole){
              : {id:r.student_id, lines:r.lines || [], notes:r.notes || {}});
       });
 
-      const ck = await supa.from("checks").select("*").eq("class_id", classId);
-      (ck.data || []).forEach(c => fire("check", {id:c.student_id, on: !!c.checked}));
+      const pullChecks = async () => {
+        const r = await supa.from("checks").select("*").eq("class_id", classId);
+        (r.data || []).forEach(c => fire("check", {id:c.student_id, on: !!c.checked}));
+      };
+      await pullChecks();
+      pulls.push(pullChecks);
       sub("ck", "checks", "class_id=eq." + classId, pl => {
         const r = pl.new && pl.new.student_id ? pl.new : pl.old;
         if(!r) return;
@@ -4507,9 +4518,13 @@ function SupabaseSync(classId, asRole){
       });
     } else {
       const mine = "class_id=eq." + classId;
-      const fb = await supa.from("feedback").select("*").eq("class_id", classId).eq("student_id", uid);
-      const f0 = (fb.data || [])[0];
-      fire("feedback", {id:uid, lines:(f0 && f0.lines) || [], notes:(f0 && f0.notes) || {}});
+      const pullMyFeedback = async () => {
+        const r = await supa.from("feedback").select("*").eq("class_id", classId).eq("student_id", uid);
+        const f0 = (r.data || [])[0];
+        fire("feedback", {id:uid, lines:(f0 && f0.lines) || [], notes:(f0 && f0.notes) || {}});
+      };
+      await pullMyFeedback();
+      pulls.push(pullMyFeedback);
       sub("myfb", "feedback", mine, pl => {
         const r = pl.new && pl.new.student_id ? pl.new : pl.old;
         if(!r || r.student_id !== uid) return;
@@ -4518,8 +4533,12 @@ function SupabaseSync(classId, asRole){
              : {id:uid, lines:r.lines || [], notes:r.notes || {}});
       });
 
-      const ck = await supa.from("checks").select("*").eq("class_id", classId).eq("student_id", uid);
-      fire("check", {id:uid, on: !!((ck.data || [])[0] || {}).checked});
+      const pullMyCheck = async () => {
+        const r = await supa.from("checks").select("*").eq("class_id", classId).eq("student_id", uid);
+        fire("check", {id:uid, on: !!((r.data || [])[0] || {}).checked});
+      };
+      await pullMyCheck();
+      pulls.push(pullMyCheck);
       sub("myck", "checks", mine, pl => {
         const r = pl.new && pl.new.student_id ? pl.new : pl.old;
         if(!r || r.student_id !== uid) return;
@@ -4527,11 +4546,17 @@ function SupabaseSync(classId, asRole){
       });
     }
 
-    const pr = await supa.from("problems").select("*").eq("class_id", classId);
-    fire("problem", {items: asProblems(((pr.data || [])[0] || {}).items)});
-    sub("prob", "problems", "class_id=eq." + classId, pl => {
-      fire("problem", {items: asProblems(pl.eventType === "DELETE" ? null : (pl.new || {}).items)});
-    });
+    /* The problem is re-read rather than taken from the notification, because
+       a pushed picture is far bigger than a live message is meant to carry —
+       the timer arrived and the image did not. Reading the row back is the
+       only version that is always the whole thing. */
+    const pullProblem = async () => {
+      const r = await supa.from("problems").select("*").eq("class_id", classId);
+      fire("problem", {items: asProblems(((r.data || [])[0] || {}).items)});
+    };
+    await pullProblem();
+    pulls.push(pullProblem);
+    sub("prob", "problems", "class_id=eq." + classId, () => pullProblem());
 
     const tm = await supa.from("timers").select("*").eq("class_id", classId);
     const sendTimer = row => {
@@ -4539,14 +4564,39 @@ function SupabaseSync(classId, asRole){
       fire("timer", {seconds: Math.max(0,
         Math.round((Date.parse(row.ends_at) - (Date.now() + offset)) / 1000))});
     };
+    const pullTimer = async () => {
+      const r = await supa.from("timers").select("*").eq("class_id", classId);
+      sendTimer((r.data || [])[0]);
+    };
     sendTimer((tm.data || [])[0]);
+    pulls.push(pullTimer);
     sub("tmr", "timers", "class_id=eq." + classId,
         pl => sendTimer(pl.eventType === "DELETE" ? null : pl.new));
 
+    const pullSession = async () => {
+      const r = await supa.from("sessions").select("*").eq("class_id", classId);
+      readClosed((r.data || [])[0]);
+    };
     const ss = await supa.from("sessions").select("*").eq("class_id", classId);
     readClosed((ss.data || [])[0]);
+    pulls.push(pullSession);
     sub("sess", "sessions", "class_id=eq." + classId,
         pl => readClosed(pl.eventType === "DELETE" ? null : pl.new));
+
+    /* Ask, as well as listen.
+
+       The live channel is the fast one. It is also the one that can quietly
+       fail to start, or drop a message too big to carry — and both happened.
+       A wall that stops hearing about boards does not merely go quiet: every
+       board ages past the presence window and gets swept, which deletes a
+       student's work while they are still writing it. So the state is re-read
+       on a timer regardless, and the channel is treated as a way to be told
+       sooner rather than the only way to be told at all. */
+    clearInterval(pollTimer);
+    pollTimer = setInterval(() => {
+      if(dead) return clearInterval(pollTimer);
+      pulls.forEach(fn => { try{ fn(); }catch(e){} });
+    }, 2500);
 
     ready = true;
     setConn("online");
@@ -4564,14 +4614,27 @@ function SupabaseSync(classId, asRole){
     ready(fn){ uid && ready ? fn(uid) : readyCbs.push(fn); },
     close(){
       dead = true;
+      clearInterval(pollTimer); pollTimer = null;
       channels.splice(0).forEach(c => { try{ supa.removeChannel(c); }catch(e){} });
       if(uid) try{ supa.from("boards").delete()
                        .eq("class_id", classId).eq("student_id", uid); }catch(e){}
     },
     wipe(){ return supa.rpc("end_lesson", {cls: classId}); },
     now(){ return Date.now() + offset; },
-    drop(id){ return supa.from("boards").delete()
-                         .eq("class_id", classId).eq("student_id", id); }
+    /* Only ever delete a board that really has gone quiet.
+
+       The wall sweeps anything it has not heard from for thirty seconds and
+       asks for it to be dropped. That is right when the wall is being told
+       about boards, and catastrophic when it is not: a wall that has stopped
+       hearing decides every student has left and erases work being written in
+       front of them. The condition below makes the database the judge of that
+       rather than a page that may simply not be listening. */
+    drop(id){
+      const cutoff = new Date(Date.now() + offset - 30000).toISOString();
+      return supa.from("boards").delete()
+                 .eq("class_id", classId).eq("student_id", id)
+                 .lt("at", cutoff);
+    }
   };
 }
 
