@@ -54,6 +54,9 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   chk('the caret is in the new workspace', (await start(priya)) === 3 && (await focus(priya)) === 3,
       'start ' + (await start(priya)) + ' focus ' + (await focus(priya)));
   let S = await raw(sam);
+  chk('the panel has its own collapse tab', await priya.evaluate(() => !!document.getElementById('paletteHide')));
+  chk('the clock lives in the top bar now', await priya.evaluate(() => !!document.querySelector('#viewBoard .brand #probClock')));
+  chk('there is no Hide/Show for problems any more', await priya.evaluate(() => !document.getElementById('probToggle')));
   chk('an empty board leaves no empty section behind',
       S.length === 2 && S[0] === P('Problem #1') && S[1] === '', JSON.stringify(S));
 
@@ -99,8 +102,8 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   chk('each panel shows its own problem on the right',
       /x\+?1|x.*1/.test(panels[1].problem) && /2/.test(panels[2].problem) && panels[0].problem === '', JSON.stringify(panels.map(p => p.problem.slice(0, 20))));
   chk('line numbers restart inside each panel', panels[2].firstNo === '1' && panels[1].firstNo === '1', JSON.stringify(panels.map(p => p.firstNo)));
-  chk('the strip no longer shows the problem boxes',
-      await priya.evaluate(() => getComputedStyle(document.getElementById('probBody')).display === 'none'));
+  chk('the panel header is a plain label, not a boxed band',
+      await priya.evaluate(() => getComputedStyle(document.querySelector('#viewBoard .workspace .wshead')).borderBottomWidth === '0px'));
   // the two problems sit side by side, newest on the right (v34)
   const boxes = await priya.evaluate(() => Array.from(document.querySelectorAll('#probBody .probitem'))
     .map(el => { const r = el.getBoundingClientRect(); return {left: Math.round(r.left), top: Math.round(r.top), w: Math.round(r.width)}; }));
@@ -128,7 +131,18 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   await teacher.waitForTimeout(300);
   chk('a note can still be opened on a line of a board with headings',
       await teacher.evaluate(() => !!document.querySelector('#workLines .wnote.here')));
-  await teacher.focus('#hidden'); await teacher.keyboard.press('Escape'); await teacher.waitForTimeout(200);
+  chk('the teacher sees a caret in the note being typed',
+      await teacher.evaluate(() => { const c = document.querySelector('#workLines .wnote.here .cursor'); return !!c && getComputedStyle(c).display !== 'none'; }));
+  await teacher.focus('#hidden'); await teacher.keyboard.type('good', {delay:4}); await teacher.waitForTimeout(900);
+  const noteRect = await priya.evaluate(() => {
+    const n = document.querySelector('#viewBoard .wnote.mine'); if(!n) return null;
+    const f = n.closest('.linebody').querySelector('.field');
+    const a = f.getBoundingClientRect(), b = n.getBoundingClientRect();
+    return {fieldBottom: Math.round(a.bottom), noteTop: Math.round(b.top), noteLeft: Math.round(b.left), fieldLeft: Math.round(a.left)};
+  });
+  chk('the student sees the note under the line, not beside it',
+      !!noteRect && noteRect.noteTop >= noteRect.fieldBottom - 2, JSON.stringify(noteRect));
+  await teacher.keyboard.press('Escape'); await teacher.waitForTimeout(200);
   await teacher.evaluate(() => document.querySelectorAll('#workLines .line.part .partmark-btn')[1].click());   // Problem 1
   await teacher.waitForTimeout(700);
   let marks = await priya.evaluate(() => window.__chalkline.marks());
@@ -184,14 +198,6 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   chk('Show maths brings it back', await priya.evaluate(() => getComputedStyle(document.getElementById('palette')).display !== 'none'));
   const glow = await priya.evaluate(() => { for (const ss of document.styleSheets) { try { for (const r of ss.cssRules) if (r.selectorText === '.workspace.fresh') return r.style.animationName; } catch (e) {} } return null; });
   chk('a new panel gets a quiet outline, not a background flash', glow === 'wsfresh', JSON.stringify(glow));
-
-  // ---- Hide hides the problems inside the panels; a new push shows them ----
-  await priya.click('#probToggle'); await priya.waitForTimeout(150);
-  chk('Hide hides the problem in each panel',
-      await priya.evaluate(() => getComputedStyle(document.querySelector('#viewBoard .workspace.active .wsproblem')).display === 'none'));
-  await priya.click('#probToggle'); await priya.waitForTimeout(150);
-  chk('Show brings it back',
-      await priya.evaluate(() => getComputedStyle(document.querySelector('#viewBoard .workspace.active .wsproblem')).display !== 'none'));
 
   // ---- the same sheet pushed again is still a new problem (prefix rule) ----
   // first make the board tall, so the new panel would start below the fold

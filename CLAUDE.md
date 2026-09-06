@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v37` at the time of writing). **Bump it in
+There is a version chip on screen (`v38` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~640 assertions plus 500 generated round-trips.
+23 suites, ~650 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -301,6 +301,27 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 (`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**v38 — the strip is gone, notes sit under the line, the caret shows.**
+The problem strip across the top (`#probStrip`) is `display:none` for good:
+its body is still built because the push handler keys off `stripKey()`, but
+nothing shows it, and the Hide/Show toggle and every `collapsed`/
+`hideproblems`/`inpanels` reference are deleted. **The clock (`#probClock`)
+moved into the student's top bar** — it lived in the strip head. The panel
+header `.wshead` is a plain label (no border band — Ryan's "extra css
+table"). Teacher notes render **under** the line: `.linebody` wraps and
+`.wnote` is `flex:0 0 100%`. The teacher's caret in a note being typed was
+hidden by `.worklines .cursor{display:none}`; `.worklines .wnote.here
+.cursor` restores it. A collapse tab (`#paletteHide`) sits at the top of the
+palette as well as `#paletteBtn` in the bar. `SupabaseSync` stamps
+`joined_at` with the session's own start on every board write, so a row
+left behind by an earlier visit cannot show a stale "joined". `openWorkspace`
+calls `showStrip()` at once (the first push used to flash the strip before
+the panel existed). The page needs `.boardwrap` `padding-bottom:55vh`: the
+newest panel is the end of the page and can only reach the top if there is
+room below it — a shorter page (the strip gone) exposed that. `test-phone`
+now asserts the panel's problem is on screen; `test-push` no longer toggles
+the strip.
 
 **Lines wrap; nothing scrolls sideways (v37).** `.linebody` no longer
 scrolls (the vertical-clipping side-effect its comment guarded against

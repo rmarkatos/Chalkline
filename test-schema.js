@@ -170,6 +170,8 @@ async function tryQuery(db, sql, params) {
   chk('a board records when it was joined', !!joined0, r.err);
   r = await tryQuery(db,
     `update public.boards set lines='["more"]'::jsonb, at=now() where student_id='user_amy' returning joined_at`);
+  r = await tryQuery(db, `update public.boards set joined_at = now() where student_id='user_amy' returning joined_at`);
+  chk('a student may stamp their own join time', r.ok && r.rows.length === 1, r.err);
   chk('writing more work does not move the join time',
       r.ok && r.rows.length === 1 && String(r.rows[0].joined_at) === joined0,
       r.ok ? String(r.rows[0] && r.rows[0].joined_at) + ' vs ' + joined0 : r.err);

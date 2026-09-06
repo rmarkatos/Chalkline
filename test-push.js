@@ -72,12 +72,9 @@ const URL = F('chalkline-board.html');
   chk('typing works under the strip', (await priya.evaluate(()=>window.__chalkline.tex())).includes("f'\\left(x\\right)=3x^{2}"));
 
   // hide/show the picture
-  await priya.click('#probToggle'); await priya.waitForTimeout(100);
-  chk('picture collapses', await priya.evaluate(()=>document.getElementById('probStrip').classList.contains('collapsed')));
-  chk('toggle relabels', (await priya.evaluate(()=>document.getElementById('probToggle').textContent)) === 'Show');
   await priya.keyboard.press('ArrowRight');   // step out of the exponent first
   await priya.keyboard.type('+1');
-  chk('typing survives the toggle', (await priya.evaluate(()=>window.__chalkline.tex())).includes('3x^{2}+1'),
+  chk('typing continues after a push', (await priya.evaluate(()=>window.__chalkline.tex())).includes('3x^{2}+1'),
       await priya.evaluate(()=>window.__chalkline.tex()));
 
   // a timer on its own, and the countdown actually counting

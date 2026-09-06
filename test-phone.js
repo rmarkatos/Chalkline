@@ -80,18 +80,16 @@ const URL = F('_phone.html');
   await t.evaluate(()=>document.getElementById('probSend').click());
   await phone.waitForTimeout(900);
 
-  const strip = await phone.evaluate(()=>{
-    const el = document.getElementById('probStrip');
+  // the problem lives in its panel now (v38); the strip across the top is gone
+  const prob = await phone.evaluate(()=>{
+    const el = document.querySelector('#viewBoard .workspace.active .wsproblem');
+    if(!el) return null;
     const r = el.getBoundingClientRect();
-    return {hidden: el.hidden, collapsed: el.classList.contains('collapsed'),
-            top:Math.round(r.top), bottom:Math.round(r.bottom),
-            w:Math.round(r.width), h:Math.round(r.height),
-            vis: getComputedStyle(el).display,
-            text: el.innerText.slice(0,80)};
+    return {top:Math.round(r.top), bottom:Math.round(r.bottom), h:Math.round(r.height), vis:getComputedStyle(el).display};
   });
-  console.log('  strip:', JSON.stringify(strip));
-  chk('problem strip is on screen on the phone',
-      !strip.hidden && strip.h > 0 && strip.top < 844 && strip.bottom > 0, JSON.stringify(strip));
+  console.log('  problem:', JSON.stringify(prob));
+  chk('the problem is on screen on the phone',
+      !!prob && prob.vis !== 'none' && prob.h > 0 && prob.top < 844 && prob.bottom > 0, JSON.stringify(prob));
   await phone.screenshot({path: path.join(HERE,'shot-phone-problem.png')});
 
   console.log(`\nphone: ${pass} passed, ${fail} failed`);

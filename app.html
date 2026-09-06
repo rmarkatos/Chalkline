@@ -110,7 +110,7 @@ button{font:inherit;color:inherit}
 @media (max-width:900px){ .wrap{grid-template-columns:minmax(0,1fr)} }
 
 .stage{display:flex; flex-direction:column; min-width:0}
-.boardwrap{flex:1; padding:22px 20px 40vh; min-width:0}   /* room to scroll the newest panel up */
+.boardwrap{flex:1; padding:22px 20px 55vh; min-width:0}   /* room to scroll the newest panel to the top */
 .board.armed{border-color:var(--accent)}
 .board{
   background:var(--surface); border:1px solid var(--line); border-radius:10px;
@@ -134,7 +134,7 @@ button{font:inherit;color:inherit}
    body used to scroll (overflow-x:auto), which also clipped tall glyphs —
    the padding was there to keep ink inside that clip box; with nothing
    clipping any more it is just breathing room. */
-.linebody{display:flex; align-items:center; min-height:38px; min-width:0; overflow:visible; padding:10px 0}
+.linebody{display:flex; flex-wrap:wrap; align-items:center; min-height:38px; min-width:0; overflow:visible; padding:10px 0}
 .linedel{
   opacity:0; border:none; background:none; cursor:pointer; color:var(--muted);
   font-size:16px; line-height:1; padding:6px; border-radius:6px; align-self:center;
@@ -312,6 +312,8 @@ button{font:inherit;color:inherit}
   position:sticky; top:53px; align-self:start;   /* stays put under the top bar */
 }
 /* the maths buttons can be put away; the board takes the whole width */
+.phead{display:flex; justify-content:flex-end; margin:-4px 0 10px}
+.phead .btn{font-size:12px; padding:4px 9px}
 .wrap.nopalette{grid-template-columns:minmax(0,1fr)}
 .wrap.nopalette .palette{display:none}
 /* stacked on a narrow screen, the board comes first and the buttons below */
@@ -477,8 +479,8 @@ button{font:inherit;color:inherit}
 .workspace.frozen{opacity:.5}
 .workspace.fresh{animation:wsfresh 1.8s ease-out}
 @keyframes wsfresh{0%{box-shadow:0 0 0 4px var(--accent-soft)} 100%{box-shadow:0 0 0 0 transparent}}
-.wshead{display:flex; align-items:center; gap:8px; padding:8px 14px; font-size:11px;
-  text-transform:uppercase; letter-spacing:.09em; color:var(--muted); border-bottom:1px solid var(--line-soft)}
+.wshead{display:flex; align-items:center; gap:8px; padding:10px 14px 0; font-size:11px;
+  text-transform:uppercase; letter-spacing:.09em; color:var(--muted)}
 .wsbody{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,39%)}
 .wsbody.noproblem{grid-template-columns:minmax(0,1fr)}
 .wslines{padding:6px 0; min-width:0}
@@ -487,9 +489,9 @@ button{font:inherit;color:inherit}
 .wsproblem .probimgs img{max-height:360px; max-width:100%}
 .board.timeup .workspace.active .wsproblem{opacity:.35; transition:opacity .6s ease}
 .line.part.brow{display:none}                 /* the heading is the panel header */
-.problemstrip.inpanels .probbody{display:none}
-.board.hideproblems .wsproblem{display:none}
-.board.hideproblems .wsbody{grid-template-columns:minmax(0,1fr)}
+/* the strip across the top is gone: each problem lives in its own panel.
+   Its body is still built (the push handler keys off it) but never shown. */
+.problemstrip{display:none !important}
 @media (max-width:900px){ .wsbody{grid-template-columns:minmax(0,1fr)}
   .wsproblem{border-left:0; border-top:1px dashed var(--line)} }
 /* a mark on a workspace: a tick by its heading (student, panel), a button
@@ -565,7 +567,7 @@ button{font:inherit;color:inherit}
 .wrow .gutter{height:auto; margin-top:3px}
 .wrow .linebody{min-height:0; padding:2px 0; display:block; overflow:visible}
 .wrow .field{display:inline-flex; align-items:center}
-.wnote{display:flex; align-items:center; gap:7px; margin:2px 0 4px 4px}
+.wnote{display:flex; align-items:center; gap:7px; margin:4px 0 2px 0; flex:0 0 100%}   /* under the line, full width */
 .wnote>i{color:var(--slot); font-style:normal; font-size:14px; flex:none}
 .wnotebox{
   display:inline-flex; align-items:center; min-height:1.7em; min-width:5em;
@@ -708,6 +710,8 @@ button{font:inherit;color:inherit}
 }
 .problines .linedel, .worklines .linedel, .fblines .linedel,
 .problines .cursor, .worklines .cursor, .fblines .cursor{display:none}
+/* …except in the note the teacher is typing right now */
+.worklines .wnote.here .cursor{display:inline-block}
 .problines .gutter, .worklines .gutter, .fblines .gutter{height:auto}
 .problines .gutter b, .worklines .gutter b, .fblines .gutter b{
   min-width:17px; height:17px; font-size:9px; border-radius:9px;
@@ -819,7 +823,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v37</span></p>
+      <span class="ver">v38</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -860,7 +864,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v37</span></p>
+      <span class="ver">v38</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -896,7 +900,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v37</span>
+      <span class="ver">v38</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -935,7 +939,8 @@ button{font:inherit;color:inherit}
     <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
-    <span class="ver">v37</span>
+    <span class="clock" id="probClock" hidden></span>
+    <span class="ver">v38</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="paletteBtn">Hide maths</button>
@@ -981,8 +986,6 @@ button{font:inherit;color:inherit}
     <div class="problemstrip" id="probStrip" hidden>
     <div class="probhead">
       <span class="plabel" id="plabel">The problem</span>
-      <span class="clock" id="probClock" hidden></span>
-      <button class="btn" id="probToggle">Hide</button>
     </div>
     <div class="probbody" id="probBody"></div>
   </div>
@@ -2700,6 +2703,13 @@ const paletteEl = document.getElementById("palette");
 paletteEl.addEventListener("scroll", hideTip);
 window.addEventListener("scroll", hideTip, true);
 function buildPalette(){
+{ // a way to put the panel away from the panel itself, not only the top bar
+  const hd = document.createElement("div"); hd.className = "phead";
+  const hb = document.createElement("button"); hb.type = "button"; hb.className = "btn"; hb.id = "paletteHide";
+  hb.textContent = "\u2039 Hide maths"; hb.title = "Put the maths buttons away";
+  hb.addEventListener("click", () => { setPalette(false); refocusEditor(); });
+  hd.appendChild(hb); paletteEl.appendChild(hd);
+}
 PALETTE.forEach(([title, cols, items]) => {
   const g = document.createElement("div"); g.className = "pgroup";
   const lb = document.createElement("span"); lb.className="lbl"; lb.textContent = title;
@@ -3950,6 +3960,7 @@ function openWorkspace(label){
   focusLine = lines.length - 1;
   cur = {list:ln.root, i:0}; sel = null; pending = null; textMode = false;
   relink(); render();
+  showStrip();                      // the strip's boxes go into the panels at once
   if(typeof schedulePublish === "function") schedulePublish();
   // after the problem strip has done its own scrolling, land on the new space
   setTimeout(() => {
@@ -4675,6 +4686,9 @@ function SupabaseSync(classId, asRole){
   const queue = [];
   let uid = null, offset = 0, dead = false, ready = false;
   const channels = [];
+  // stamped on every board write, so a row left behind by an earlier visit
+  // does not keep an old "joined" time on the wall
+  const joinedAt = new Date().toISOString();
   const pulls = [];              // everything that can re-read its own state
   let pollTimer = null;
   const readyCbs = [];
@@ -4714,7 +4728,8 @@ function SupabaseSync(classId, asRole){
     if(type === "board"){
       W("your board", T("boards").upsert({
         class_id: classId, student_id: uid, name: p.name || "student",
-        lines: p.lines || [], ids: p.ids || [], at: new Date().toISOString()
+        lines: p.lines || [], ids: p.ids || [], at: new Date().toISOString(),
+        joined_at: joinedAt
       }, {onConflict: "class_id,student_id"}));
     }
     else if(type === "feedback"){
@@ -5118,9 +5133,6 @@ function join(asRole, room, name){
       // the sync layer announces the same problem every few seconds; only a
       // different one is news
       if(stripKey() === before) return;
-      document.getElementById("probStrip").classList.remove("collapsed");
-      document.getElementById("probToggle").textContent = "Hide";
-      boardEl.classList.remove("hideproblems");       // a new problem is shown
       // the strip was just rebuilt, one .probitem per item in order, so an
       // index into problemItems is an index into its children
       const fresh = newItemIndices(beforeKeys, itemKeys(problemItems));
@@ -5842,11 +5854,9 @@ function showStrip(){
   const strip = document.getElementById("probStrip");
   const body  = document.getElementById("probBody");
   const has = problemItems.length > 0;
-  strip.classList.toggle("inpanels", lines.some(l => l.kind === "part"));
   strip.hidden = !(has || timerEnd);
   document.getElementById("plabel").textContent =
     problemItems.length > 1 ? problemItems.length + " problems" : "The problem";
-  document.getElementById("probToggle").hidden = !has;
 
   // images are expensive to re-decode, so only redraw when something changed.
   // This runs even while the strip is hidden, so clearing really clears.
@@ -5868,13 +5878,7 @@ function showFeedback(){
 function showTick(){
   document.getElementById("tickBadge").hidden = !myCheck;
 }
-document.getElementById("probToggle").addEventListener("click", e => {
-  const strip = document.getElementById("probStrip");
-  const off = strip.classList.toggle("collapsed");
-  boardEl.classList.toggle("hideproblems", off);   // the boxes live in the panels now
-  e.currentTarget.textContent = off ? "Show" : "Hide";
-  refocusEditor();
-});
+/* the strip's Hide/Show is gone: problems live in their panels */
 
 /* ---- teacher: compose and push ---------------------------------------- */
 let pendingImages = [];
