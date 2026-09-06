@@ -40,9 +40,12 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v26`, next to the class code). **Bump it in
-`app.html` whenever you ship**, or nobody can tell which build they are looking
-at. Several hours were lost to exactly that.
+There is a version chip on screen (`v29` at the time of writing). **Bump it in
+`app.html` on every ship — one ship, one bump.** Several hours were lost to
+not doing that once; then on 2026-09-04 about ten builds went out all
+labelled v28 and caused exactly the stale-page confusion the chip exists to
+prevent. There are four chips in the file (landing, splash, board, wall);
+replace `class="ver">vNN<` everywhere.
 
 ---
 
@@ -70,7 +73,7 @@ this is the shape of it.
 `render()` runs during start-up, long before the sharing section is reached.
 Any `let`/`const` it touches has to be declared with the other shared state near
 the top (`sync`, `holdPublish`, `problemItems`, `noteMap`, `myNotes`, …).
-**This has caused a blank page four separate times.** If the page loads to
+**This has caused a blank page five separate times** (`test-boot.js` now catches it). If the page loads to
 nothing, open the console: it will say *"Cannot access X before
 initialization"*.
 
@@ -151,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-22 suites, ~560 assertions plus 500 generated round-trips.
+22 suites, ~570 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -259,6 +262,19 @@ only redraws when the plan changes, so buttons are not rebuilt under a
 finger. Leaving a board lands on a resting screen with *Open my board
 again* and *Sign out* — never the class-code form, which no longer exists.
 
+**Teacher presence (v29).** On a student's screen **LIVE means the teacher is
+on this class's wall**, not "connected"; otherwise the chip reads *waiting
+for teacher* and the top bar shows *"Mr. Markatos is logged in"* only while
+he is. The wall upserts `sessions.teacher_at` (and `teacher_name`, from
+`my_teacher_name()` — the one thing the unreadable `teachers` table gives
+out, and only about yourself) every 5s; students already poll that row, and
+`teacherPresent(row, now)` — pure, tested — counts under 20s as here.
+`stopTeacherBeat()` clears it on Leave so students see the change at once.
+The display name lives in `chalkline-local.json` (`teacherName`) and is
+filled into the seed by `build.py` like the email. Also v29: class *names*
+in the student top bar (`roomLabel()`), the splash centred like the landing
+box, and the palette scrollbar in theme tokens.
+
 **Classroom.** The wall, push a problem (PNG or PDF, several stack up), a
 timer that locks input, feedback, per-line notes, a checkmark. All unchanged
 above the sync layer.
@@ -332,7 +348,7 @@ so it confirms their algebra. One family so far: **logarithmic**.
 | `supabase-config.json` | Supabase address + publishable key, injected at build time |
 | `clerk-config.json` | Clerk publishable key, injected at build time |
 | `firebase-config.json` | the old Firebase settings — still injected, only used when the two above are empty |
-| `chalkline-local.json` | Ryan's email. **Git-ignored. Never leaves the laptop.** |
+| `chalkline-local.json` | Ryan's email and display name. **Git-ignored. Never leaves the laptop.** |
 | `supabase-schema.sql` | the database and rules — the replacement for `firebase-rules.json`. Placeholder email |
 | `supabase-schema.local.sql` | the same with the real email, written by `build.py`. **Git-ignored.** This is what gets pasted into Supabase |
 | `index.html` | built + configured — this is what goes on GitHub Pages |

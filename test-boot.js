@@ -166,6 +166,27 @@ const FAKE_CLERK = `window.CHALKLINE_CLERK = {
   await p.evaluate(() => window.__chalkline.timer(30, 2000));          // a fresh one
   chk('a running timer does not lock', !(await p.evaluate(() => window.__chalkline.locked())));
 
+  /* The class-picker box sat top-left while the sign-in box was centred:
+     #viewLanding had the centring rule and #viewSplash had none. */
+  const splashStyle = await p.evaluate(() => {
+    const cs = getComputedStyle(document.getElementById('viewSplash'));
+    return {display: cs.display, place: cs.placeItems || cs.alignItems + ' ' + cs.justifyItems};
+  });
+  chk('the class picker is centred like the sign-in box',
+      splashStyle.display === 'grid' && /center/.test(splashStyle.place), JSON.stringify(splashStyle));
+
+  /* "LIVE" on a student's screen means the teacher is on the wall: their
+     page writes the time every 5s; under 20s old counts. */
+  const now = Date.now();
+  const present = (row) => p.evaluate(([r, n]) => window.__chalkline.present(r, n), [row, now]);
+  chk('a fresh heartbeat means the teacher is here',
+      await present({teacher_at: new Date(now - 3000).toISOString()}));
+  chk('a heartbeat 40s old means they have gone',
+      !(await present({teacher_at: new Date(now - 40000).toISOString()})));
+  chk('no heartbeat means not here', !(await present({teacher_at: null})) && !(await present(null)));
+  chk('the "is logged in" label exists on the student board',
+      await p.evaluate(() => !!document.getElementById('teacherHere')));
+
   await browser.close();
   try { fs.unlinkSync(TEMP); } catch (e) {}
 

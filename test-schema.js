@@ -133,6 +133,13 @@ async function tryQuery(db, sql, params) {
   r = await tryQuery(db,
     `update public.enrolments set status='approved' where student_id='user_ben' returning *`);
   chk('teacher can approve a student', r.ok && r.rows.length === 1, r.err);
+  r = await tryQuery(db,
+    `insert into public.sessions (class_id, teacher_at, teacher_name) values ('algebra2', now(), 'T')
+     on conflict (class_id) do update set teacher_at = excluded.teacher_at returning *`);
+  chk('teacher can say they are here', r.ok && r.rows.length === 1, r.err);
+  r = await tryQuery(db, `select public.my_teacher_name() as n`);
+  chk('teacher gets their own display name', r.ok && r.rows[0].n === 'Your teacher',
+      r.ok ? JSON.stringify(r.rows[0]) : r.err);
   await db.exec('rollback');
 
   // ---- an approved student ------------------------------------------------
@@ -160,6 +167,11 @@ async function tryQuery(db, sql, params) {
   r = await tryQuery(db, `select * from public.enrolments`);
   chk('student sees only their own enrolment', r.ok && r.rows.length === 1 &&
       r.rows[0].student_id === 'user_amy', r.ok ? 'saw ' + r.rows.length : r.err);
+  r = await tryQuery(db, `update public.sessions set teacher_at = now() where class_id='algebra2' returning *`);
+  chk('a student CANNOT pretend the teacher is here', !r.ok || r.rows.length === 0,
+      r.ok ? 'changed ' + r.rows.length : '');
+  r = await tryQuery(db, `select public.my_teacher_name() as n`);
+  chk('a student gets no teacher name', r.ok && r.rows[0].n === null, r.ok ? JSON.stringify(r.rows[0]) : r.err);
   await db.exec('rollback');
 
   // ---- a student still waiting to be let in -------------------------------

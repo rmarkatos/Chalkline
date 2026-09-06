@@ -389,6 +389,7 @@ button{font:inherit;color:inherit}
 
 /* landing */
 #viewLanding{min-height:100vh; display:grid; place-items:center; padding:24px}
+#viewSplash{min-height:100vh; display:grid; place-items:center; padding:24px}
 .join{
   background:var(--surface); border:1px solid var(--line); border-radius:14px;
   box-shadow:var(--shadow); padding:30px 30px 24px; width:min(440px,100%);
@@ -708,6 +709,15 @@ button{font:inherit;color:inherit}
   border:1px solid var(--line); color:var(--muted); background:var(--surface-2);
 }
 .conn.online{border-color:var(--accent); color:var(--accent-ink); background:var(--accent-soft)}
+.conn.waiting{border-style:dashed}
+/* the scrollbar on the maths-button panel, in the app's own colours; the
+   tokens change with the theme so it follows light and dark by itself */
+.palette{scrollbar-width:thin; scrollbar-color:var(--line) transparent}
+.palette::-webkit-scrollbar{width:8px}
+.palette::-webkit-scrollbar-track{background:transparent}
+.palette::-webkit-scrollbar-thumb{background:var(--line); border-radius:8px;
+  border:2px solid transparent; background-clip:padding-box}
+.palette::-webkit-scrollbar-thumb:hover{background:var(--muted); background-clip:padding-box}
 .btn.danger{border-color:var(--slot); color:var(--slot); background:var(--slot-soft)}
 .conn.offline, .conn.failed{border-color:var(--slot); color:var(--slot); background:var(--slot-soft)}
 
@@ -746,7 +756,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v28</span></p>
+      <span class="ver">v29</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -787,7 +797,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v28</span></p>
+      <span class="ver">v29</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -823,7 +833,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v28</span>
+      <span class="ver">v29</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -861,7 +871,8 @@ button{font:inherit;color:inherit}
     <h1>Chalkline</h1>
     <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
-    <span class="ver">v28</span>
+    <span class="tag" id="teacherHere" hidden></span>
+    <span class="ver">v29</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -988,6 +999,17 @@ const CLASS_NAMES = {};
 let accountsReady = null;
 let waitChannel = null;
 let waitPoll = null, splashPoll = null;
+let connState = "connecting", teacherHere = false, teacherHereName = "";
+let teacherBeat = null, myTeacherName = "";
+/* "AP Calculus AB", not "apcalcab" — the id is for the database */
+function roomLabel(){ return USE_ACCOUNTS ? (CLASS_NAMES[myRoom] || myRoom) : myRoom; }
+/* Is the teacher on this class's wall? Their page writes the time every five
+   seconds; under twenty seconds old counts. Pure, so it can be tested. */
+function teacherPresent(row, now){
+  if(!row || !row.teacher_at) return false;
+  const t = Date.parse(row.teacher_at);
+  return isFinite(t) && (now - t) < 20000;
+}
 
 /* What to call the room we are in.
 
@@ -4476,6 +4498,8 @@ function SupabaseSync(classId, asRole){
 
     let lastClosed = 0, sawClosed = false;
     const readClosed = row => {
+      fire("teacher", {here: teacherPresent(row, Date.now() + offset),
+                       name: (row && row.teacher_name) || ""});
       const t = row && row.closed_at ? Date.parse(row.closed_at) : 0;
       const ended = !!(row && row.ended);
       if(!sawClosed){ sawClosed = true; lastClosed = t; return; }
@@ -4662,16 +4686,40 @@ function makeSync(room, role){
 
 /* a visible answer to "is this actually connected?" */
 function setConn(state, detail){
+  connState = state;
   const label = {connecting:"connecting…", online:"live", offline:"reconnecting…",
                  failed:"not connected"}[state] || state;
   ["connChipS", "connChipT"].forEach(id => {
     const el = document.getElementById(id);
     if(!el) return;
-    el.hidden = !FIREBASE_CONFIG.apiKey;
+    el.hidden = !(FIREBASE_CONFIG.apiKey || USE_ACCOUNTS);
     el.textContent = label;
     el.className = "conn " + state;
     if(detail) el.title = detail;
   });
+  paintStudentChip();
+}
+/* On a student's screen, with accounts on, "LIVE" means the teacher is on
+   this class's wall — not merely that the page is connected. Connection
+   trouble still shows as itself; only a healthy connection is re-labelled. */
+function paintStudentChip(){
+  if(!USE_ACCOUNTS) return;
+  const el = document.getElementById("connChipS");
+  const who = document.getElementById("teacherHere");
+  if(el && connState === "online"){
+    el.textContent = teacherHere ? "live" : "waiting for teacher";
+    el.className = "conn " + (teacherHere ? "online" : "waiting");
+  }
+  if(who){
+    who.hidden = !teacherHere;
+    who.textContent = teacherHere ? (teacherHereName || "Your teacher") + " is logged in" : "";
+  }
+}
+function setTeacherHere(here, name){
+  here = !!here; name = name || "";
+  if(here === teacherHere && name === teacherHereName) return;   // the poll repeats itself
+  teacherHere = here; teacherHereName = name;
+  paintStudentChip();
 }
 /* A FirebaseSync(room) returning the same three methods is the only thing
    needed to make this work across real devices. Message shapes:
@@ -4764,7 +4812,7 @@ function join(asRole, room, name){
 
   if(asRole === "student"){
     editorTarget = {mode:"student"};
-    document.querySelector("#viewBoard .brand .tag").textContent = myName + " · " + myRoom;
+    document.querySelector("#viewBoard .brand .tag").textContent = myName + " · " + roomLabel();
     document.getElementById("leaveBtn").hidden = false;
     document.getElementById("sSignOut").hidden = !USE_ACCOUNTS;
     resetBoard(); render(); showScreen("board");
@@ -4801,6 +4849,7 @@ function join(asRole, room, name){
       showTick();
     });
     sync.on("timer", m => startTimer(m.seconds, m.endsAt));
+    sync.on("teacher", m => setTeacherHere(m.here, m.name));
     sync.on("close", m => {
       if(m && m.ended){ leave(); return; }     // the teacher ended the session
       startTimer(0);
@@ -4833,6 +4882,7 @@ function join(asRole, room, name){
         "Anyone waiting appears above.";
       renderWaiting();
       watchWaiting();
+      startTeacherBeat();
     }
     sync.on("board", m => {
       // a leftover board from an earlier session is not a student in the room
@@ -4895,6 +4945,7 @@ function join(asRole, room, name){
 }
 function leave(){
   const wasTeacher = role === "teacher";
+  if(wasTeacher) stopTeacherBeat();      // before role and room are cleared
   clearInterval(heartbeat); clearInterval(agoTimer); clearTimeout(pubTimer);
   if(sync) sync.close();
   sync = null; role = null; boards.clear(); fbMap.clear(); ckMap.clear();
@@ -5119,7 +5170,7 @@ function openBoardNow(id, b){
   document.getElementById("workPanel").hidden = false;
   drawWorkPanel();
   document.getElementById("actingCheck").classList.toggle("checked", !!b.check);
-  document.querySelector("#viewBoard .brand .tag").textContent = b.name + " · " + myRoom;
+  document.querySelector("#viewBoard .brand .tag").textContent = b.name + " · " + roomLabel();
   holdPublish = true;
   loadLines(fbMap.get(id) || b.feedback || []);
   showScreen("board");
@@ -5481,7 +5532,7 @@ function openComposer(){
   document.getElementById("probMins").value = "";
   document.getElementById("probFile").value = "";
   document.getElementById("composerBar").hidden = false;
-  document.querySelector("#viewBoard .brand .tag").textContent = "New problem · " + myRoom;
+  document.querySelector("#viewBoard .brand .tag").textContent = "New problem · " + roomLabel();
   refreshComposerCount();
   holdPublish = true;
   loadLines([""]);
@@ -6141,6 +6192,37 @@ async function teacherPickClass(){
   });
 }
 
+/* ---- telling students the teacher is here ------------------------------ */
+
+/* Every five seconds while the wall is open, write the time into this
+   class's session row. Students read that row anyway; under twenty seconds
+   old means "here". The name comes from the teachers table, once. */
+function startTeacherBeat(){
+  clearInterval(teacherBeat);
+  const beat = async () => {
+    if(!supa || role !== "teacher" || !myRoom) return;
+    if(!myTeacherName){
+      try{ const r = await supa.rpc("my_teacher_name"); myTeacherName = r.data || ""; }catch(e){}
+    }
+    const r = await supa.from("sessions").upsert(
+      {class_id: myRoom, teacher_at: new Date().toISOString(),
+       teacher_name: myTeacherName || "Your teacher"},
+      {onConflict: "class_id"});
+    if(r && r.error) reportError("saying you are here", r.error);
+  };
+  beat();
+  teacherBeat = setInterval(beat, 5000);
+}
+/* Clearing the time on the way out means students see "waiting for teacher"
+   at once rather than twenty seconds later. Best effort — a closed tab
+   simply times out. */
+function stopTeacherBeat(){
+  clearInterval(teacherBeat); teacherBeat = null;
+  if(USE_ACCOUNTS && supa && myRoom && role === "teacher")
+    supa.from("sessions").update({teacher_at: null}).eq("class_id", myRoom)
+        .then(() => {}, () => {});
+}
+
 /* ---- the approvals queue on the wall ----------------------------------- */
 
 /* Redraw the "waiting to join" panel. Called when the wall opens and again
@@ -6220,6 +6302,7 @@ async function startAccounts(){
 
 window.__chalkline = {
   room: r => normalRoom(r),
+  present: (row, now) => teacherPresent(row, now),
   asStudent: () => { role = "student"; },
   timer: (s, e) => startTimer(s, e),
   locked: () => isLocked(),

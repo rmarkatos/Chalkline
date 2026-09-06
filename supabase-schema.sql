@@ -33,6 +33,9 @@ create table if not exists public.teachers (
   email      text primary key,
   added_at   timestamptz not null default now()
 );
+-- what students see: "Mr. Markatos is logged in". Added after the table
+-- existed, so it is an alter rather than a column in the create above.
+alter table public.teachers add column if not exists display_name text;
 
 create table if not exists public.classes (
   id         text primary key,          -- 'algebra2', 'apcalcab'
@@ -116,6 +119,12 @@ create table if not exists public.sessions (
   closed_at  timestamptz,
   ended      boolean not null default false   -- true = session over, not just closed
 );
+-- Teacher presence. The wall writes teacher_at every five seconds while it is
+-- open; a student's page reads it (they already read this row) and calls the
+-- teacher "here" if it is under twenty seconds old. That is what "LIVE" means
+-- on a student's screen now: not "connected", but "your teacher is here".
+alter table public.sessions add column if not exists teacher_at   timestamptz;
+alter table public.sessions add column if not exists teacher_name text;
 
 
 -- ---------------------------------------------------------------------------
@@ -131,6 +140,14 @@ create or replace function public.clerk_email() returns text
 create or replace function public.is_teacher() returns boolean
   language sql stable security definer set search_path = public as $$
     select exists (select 1 from public.teachers t where t.email = public.clerk_email())
+  $$;
+
+-- The signed-in teacher's display name, or null for anybody else. The
+-- teachers table itself is readable by nobody; this is the one thing it
+-- gives out, and only about yourself.
+create or replace function public.my_teacher_name() returns text
+  language sql stable security definer set search_path = public as $$
+    select t.display_name from public.teachers t where t.email = public.clerk_email()
   $$;
 
 -- Is this person an approved student of this class? Used by nearly every
@@ -303,6 +320,7 @@ grant execute on function public.clerk_uid()        to authenticated;
 grant execute on function public.clerk_email()      to authenticated;
 grant execute on function public.is_teacher()       to authenticated;
 grant execute on function public.is_approved_in(text) to authenticated;
+grant execute on function public.my_teacher_name() to authenticated;
 
 
 -- ---------------------------------------------------------------------------
@@ -342,8 +360,8 @@ end $$;
 --      insert into public.teachers (email) values ('them@example.com')
 --        on conflict (email) do nothing;
 
-insert into public.teachers (email) values ('you@example.com')
-  on conflict (email) do nothing;
+insert into public.teachers (email, display_name) values ('you@example.com', 'Your teacher')
+  on conflict (email) do update set display_name = excluded.display_name;
 
 insert into public.classes (id, name, sort) values
   ('algebra2', 'Algebra 2',        1),

@@ -20,6 +20,7 @@ import json, os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLACEHOLDER = "you@example.com"
+NAME_PLACEHOLDER = "Your teacher"
 
 # The Supabase and Clerk settings blocks, exactly as they sit in app.html.
 # build.py fills them from supabase-config.json and clerk-config.json the same
@@ -115,8 +116,14 @@ def schema():
     if PLACEHOLDER not in sql:
         sys.exit("build: the teacher line in supabase-schema.sql has changed "
                  "shape — update PLACEHOLDER in build.py to match it")
+    name = (cfg.get("teacherName") or "").strip()
+    if not name:
+        print("note: chalkline-local.json has no teacherName, so students will "
+              "see 'Your teacher is logged in' rather than a name")
+    filled = sql.replace(PLACEHOLDER, email)
+    if name: filled = filled.replace(NAME_PLACEHOLDER, name)
     out = os.path.join(HERE, "supabase-schema.local.sql")
-    open(out, "w", encoding="utf-8").write(sql.replace(PLACEHOLDER, email))
+    open(out, "w", encoding="utf-8").write(filled)
     print("built %s  — paste this one into Supabase (%s)"
           % (os.path.basename(out), email))
 
