@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v36` at the time of writing). **Bump it in
+There is a version chip on screen (`v37` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~630 assertions plus 500 generated round-trips.
+23 suites, ~640 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -301,6 +301,22 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 (`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**Lines wrap; nothing scrolls sideways (v37).** `.linebody` no longer
+scrolls (the vertical-clipping side-effect its comment guarded against
+vanishes once nothing clips); `.field` and **only the top-level** `.field >
+.ml` may wrap — a fraction's numerator, a power, a matrix cell keep
+`nowrap`. `.tx` text is `pre-wrap`. Also v37: the problem column is 39% of
+its panel; a new panel gets a quiet outline (`wsfresh`), not the background
+flash that read as "the screen flashed"; the palette is `position:sticky`
+under the top bar and can be put away (`#paletteBtn`, `.wrap.nopalette`,
+remembered in `localStorage` — the app's first use of it, try/catch
+wrapped); a pushed problem scrolls the student to the **top of the new
+panel** (`block:"start"`, `scroll-margin-top:110px`). Two consequences
+worth knowing: the page needed room below the board (`.boardwrap`
+`padding-bottom:40vh`) or the last panel could never reach the top — the
+document simply ended; and the strip (count + clock) is now sticky too, or
+that scroll carried the clock off a phone's screen (`test-phone` caught it).
 
 **Workspace panels (v36).** `render()` is now `renderRows()` — one flat
 `.line.brow` row per line, exactly as before — followed by `groupIntoPanels()`,

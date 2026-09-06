@@ -114,7 +114,7 @@ button{font:inherit;color:inherit}
 @media (max-width:900px){ .wrap{grid-template-columns:minmax(0,1fr)} }
 
 .stage{display:flex; flex-direction:column; min-width:0}
-.boardwrap{flex:1; padding:22px 20px 8px; min-width:0}
+.boardwrap{flex:1; padding:22px 20px 40vh; min-width:0}   /* room to scroll the newest panel up */
 .board.armed{border-color:var(--accent)}
 .board{
   background:var(--surface); border:1px solid var(--line); border-radius:10px;
@@ -134,9 +134,11 @@ button{font:inherit;color:inherit}
   min-width:22px; height:22px; display:grid; place-items:center;
   border:1px solid var(--line); border-radius:11px; color:var(--muted); background:var(--surface);
 }
-/* overflow-x:auto makes the browser clip the vertical axis too, which crops
-   tall glyphs — the padding keeps their ink inside the clip box. */
-.linebody{display:flex; align-items:center; min-height:38px; min-width:0; overflow-x:auto; padding:10px 0}
+/* A line of work never scrolls sideways: it wraps onto the next line. The
+   body used to scroll (overflow-x:auto), which also clipped tall glyphs —
+   the padding was there to keep ink inside that clip box; with nothing
+   clipping any more it is just breathing room. */
+.linebody{display:flex; align-items:center; min-height:38px; min-width:0; overflow:visible; padding:10px 0}
 .linedel{
   opacity:0; border:none; background:none; cursor:pointer; color:var(--muted);
   font-size:16px; line-height:1; padding:6px; border-radius:6px; align-self:center;
@@ -157,11 +159,14 @@ button{font:inherit;color:inherit}
 .field{
   font-family:"STIX Two Text",Cambria,"Times New Roman",serif;
   font-size:27px; line-height:1.16; cursor:text; padding:2px 6px 2px 4px;
-  min-width:40px; min-height:1.2em; display:inline-block;
-  border-radius:6px; white-space:nowrap;
+  min-width:40px; min-height:1.2em; display:inline-block; max-width:100%;
+  border-radius:6px; white-space:normal; overflow-wrap:anywhere;
 }
 .field:focus{outline:none}
 .ml{display:block; white-space:nowrap}
+/* only the top-level list of a line may break across lines; a fraction's
+   numerator, a power, a matrix cell must stay in one piece */
+.field > .ml{white-space:normal}
 .at{font-style:italic; padding-right:.02em}          /* variable */
 .dg{font-style:normal; font-variant-numeric:lining-nums}
 .op{font-style:normal; margin:0 .17em}
@@ -175,7 +180,7 @@ button{font:inherit;color:inherit}
    the 27px the mathematics needs */
 .tx{
   font-family:"IBM Plex Sans",-apple-system,"Segoe UI",sans-serif;
-  font-style:normal; font-size:.72em; white-space:pre; letter-spacing:0;
+  font-style:normal; font-size:.72em; white-space:pre-wrap; letter-spacing:0;
   vertical-align:baseline;
 }
 .spc{display:inline-block; height:1px; vertical-align:middle}
@@ -308,7 +313,11 @@ button{font:inherit;color:inherit}
   order:-1;                       /* the buttons sit to the left of the board */
   border-right:1px solid var(--line); background:var(--surface); padding:16px 16px 40px;
   overflow-y:auto; max-height:calc(100vh - 53px);
+  position:sticky; top:53px; align-self:start;   /* stays put under the top bar */
 }
+/* the maths buttons can be put away; the board takes the whole width */
+.wrap.nopalette{grid-template-columns:minmax(0,1fr)}
+.wrap.nopalette .palette{display:none}
 /* stacked on a narrow screen, the board comes first and the buttons below */
 @media (max-width:900px){
   .palette{order:0; border-right:none; border-top:1px solid var(--line); max-height:none}
@@ -467,13 +476,14 @@ button{font:inherit;color:inherit}
 /* one panel per workspace: header, lines on the left, its problem on the
    right; the panel in use is bright and the rest are dimmed as a whole */
 .workspace{border:1px solid var(--line); border-radius:12px; margin:10px 0 14px;
-  background:var(--surface); overflow:hidden}
+  background:var(--surface); overflow:hidden; scroll-margin-top:110px}  /* clear of the sticky bar and strip */
 .workspace.active{border-color:var(--accent)}
 .workspace.frozen{opacity:.5}
-.workspace.fresh{animation:probflash 2.6s ease-out}
+.workspace.fresh{animation:wsfresh 1.8s ease-out}
+@keyframes wsfresh{0%{box-shadow:0 0 0 4px var(--accent-soft)} 100%{box-shadow:0 0 0 0 transparent}}
 .wshead{display:flex; align-items:center; gap:8px; padding:8px 14px; font-size:11px;
   text-transform:uppercase; letter-spacing:.09em; color:var(--muted); border-bottom:1px solid var(--line-soft)}
-.wsbody{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,46%)}
+.wsbody{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,39%)}
 .wsbody.noproblem{grid-template-columns:minmax(0,1fr)}
 .wslines{padding:6px 0; min-width:0}
 .wsproblem{border-left:1px dashed var(--line); padding:10px 14px; min-width:0; overflow:auto}
@@ -643,6 +653,7 @@ button{font:inherit;color:inherit}
 /* ---------- the problem, as students see it ---------- */
 .problemstrip{
   background:var(--surface); border-bottom:1px solid var(--line); padding:10px 20px 12px;
+  position:sticky; top:53px; z-index:15;        /* the count and the clock stay in view */
 }
 .probhead{display:flex; align-items:center; gap:10px; margin-bottom:8px}
 .plabel{
@@ -812,7 +823,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v36</span></p>
+      <span class="ver">v37</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -853,7 +864,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v36</span></p>
+      <span class="ver">v37</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -889,7 +900,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v36</span>
+      <span class="ver">v37</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -928,9 +939,10 @@ button{font:inherit;color:inherit}
     <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
-    <span class="ver">v36</span>
+    <span class="ver">v37</span>
   </div>
   <div class="barbtns">
+    <button class="btn" id="paletteBtn">Hide maths</button>
     <button class="btn" id="themeBtn">Theme</button>
     <button class="btn" id="addNote">Add text line</button>
     <button class="btn" id="addGraph">Add a graph</button>
@@ -3203,6 +3215,24 @@ document.getElementById("clearAll").addEventListener("click", () => {
   if(isLocked()) return;
   clearActive(); render(); hidden.focus();
 });
+/* Put the maths buttons away, and remember it on this device. */
+function setPalette(shown){
+  const wrap = document.querySelector("#viewBoard .wrap");
+  if(!wrap) return;
+  wrap.classList.toggle("nopalette", !shown);
+  const b = document.getElementById("paletteBtn");
+  if(b) b.textContent = shown ? "Hide maths" : "Show maths";
+  try{ localStorage.setItem("chalkline.palette", shown ? "shown" : "hidden"); }catch(e){}
+}
+function paletteShown(){
+  try{ return localStorage.getItem("chalkline.palette") !== "hidden"; }catch(e){ return true; }
+}
+document.getElementById("paletteBtn").addEventListener("click", () => {
+  const wrap = document.querySelector("#viewBoard .wrap");
+  setPalette(!!(wrap && wrap.classList.contains("nopalette")));
+  refocusEditor();
+});
+setPalette(paletteShown());
 function toggleTheme(){
   const now = document.documentElement.getAttribute("data-theme");
   const dark = now ? now === "dark"
@@ -3930,7 +3960,11 @@ function openWorkspace(label){
     const rows = boardRows();
     const r = rows[rows.length - 1];
     const ws = r && r.closest(".workspace"); if(ws) ws.classList.add("fresh");
-    if(r && r.scrollIntoView) r.scrollIntoView({behavior:"smooth", block:"end"});
+    // bring the whole new panel into view — header and problem at the top,
+    // not just the empty line at its bottom (which left a tall sheet's
+    // header above the screen)
+    const target = ws || r;
+    if(target && target.scrollIntoView) target.scrollIntoView({behavior:"smooth", block:"start"});
     try{ hidden.focus(); }catch(e){}
   }, 250);
 }

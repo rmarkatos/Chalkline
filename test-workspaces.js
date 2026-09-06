@@ -155,6 +155,36 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   chk('headings round-trip through save and load', JSON.stringify(await raw(priya)) === JSON.stringify(L));
   chk('tex() reads only the maths', !/%%P/.test(await priya.evaluate(() => window.__chalkline.tex())));
 
+  // ---- v37: narrower problem column, wrapping lines, sticky palette, toggle ----
+  const cols = await priya.evaluate(() => {
+    const b = document.querySelector('#viewBoard .workspace.active .wsbody');
+    const px = getComputedStyle(b).gridTemplateColumns.split(' ').map(parseFloat);
+    return {ratio: px[1] / (px[0] + px[1]), cols: px.length};
+  });
+  chk('the problem column is about 39% of the panel', cols.cols === 2 && Math.abs(cols.ratio - 0.39) < 0.03, JSON.stringify(cols));
+  await priya.focus('#hidden'); await priya.keyboard.type('a+'.repeat(60) + 'a', {delay:1});
+  await priya.waitForTimeout(200);
+  const wrapInfo = await priya.evaluate(() => {
+    const rows = document.querySelectorAll('#viewBoard .workspace.active .brow:not(.part)');
+    const row = rows[rows.length - 1];
+    const body = row.querySelector('.linebody'), field = row.querySelector('.field');
+    return {bodyScroll: body.scrollWidth, bodyClient: body.clientWidth, fieldH: field.getBoundingClientRect().height};
+  });
+  chk('a long line never scrolls sideways', wrapInfo.bodyScroll <= wrapInfo.bodyClient + 1, JSON.stringify(wrapInfo));
+  chk('a long line wraps onto more lines', wrapInfo.fieldH > 55, JSON.stringify(wrapInfo));
+  chk('the button panel is sticky', await priya.evaluate(() => getComputedStyle(document.getElementById('palette')).position === 'sticky'));
+  await priya.click('#paletteBtn'); await priya.waitForTimeout(100);
+  const hid = await priya.evaluate(() => ({ palette: getComputedStyle(document.getElementById('palette')).display,
+                                             cls: document.querySelector('#viewBoard .wrap').className,
+                                             saved: (() => { try { return localStorage.getItem('chalkline.palette'); } catch (e) { return null; } })(),
+                                             btn: document.getElementById('paletteBtn').textContent }));
+  chk('Hide maths puts the button panel away and remembers it',
+      hid.palette === 'none' && /nopalette/.test(hid.cls) && hid.saved === 'hidden' && hid.btn === 'Show maths', JSON.stringify(hid));
+  await priya.click('#paletteBtn'); await priya.waitForTimeout(100);
+  chk('Show maths brings it back', await priya.evaluate(() => getComputedStyle(document.getElementById('palette')).display !== 'none'));
+  const glow = await priya.evaluate(() => { for (const ss of document.styleSheets) { try { for (const r of ss.cssRules) if (r.selectorText === '.workspace.fresh') return r.style.animationName; } catch (e) {} } return null; });
+  chk('a new panel gets a quiet outline, not a background flash', glow === 'wsfresh', JSON.stringify(glow));
+
   // ---- Hide hides the problems inside the panels; a new push shows them ----
   await priya.click('#probToggle'); await priya.waitForTimeout(150);
   chk('Hide hides the problem in each panel',
@@ -164,9 +194,16 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
       await priya.evaluate(() => getComputedStyle(document.querySelector('#viewBoard .workspace.active .wsproblem')).display !== 'none'));
 
   // ---- the same sheet pushed again is still a new problem (prefix rule) ----
+  // first make the board tall, so the new panel would start below the fold
+  await priya.focus('#hidden'); for(let i = 0; i < 30; i++) await priya.keyboard.press('Enter');
+  await priya.evaluate(() => window.scrollTo(0, 0)); await priya.waitForTimeout(100);
   await push('x+2');
   L = await raw(priya);
-  chk('pushing the same problem again opens another workspace', L[6] === P('Problem #3') && L[7] === '', JSON.stringify(L));
+  chk('pushing the same problem again opens another workspace', L[L.length - 2] === P('Problem #3') && L[L.length - 1] === '', JSON.stringify(L.slice(-2)));
+  await priya.waitForTimeout(900);                       // the smooth scroll
+  const view = await priya.evaluate(() => { const w = document.querySelector('#viewBoard .workspace.active');
+    const r = w.getBoundingClientRect(); return {top: Math.round(r.top), vh: window.innerHeight}; });
+  chk('the student is scrolled to the newest problem', view.top >= 0 && view.top < 200, JSON.stringify(view));
 
   console.log(`\nworkspaces: ${pass} passed, ${fail} failed`);
   console.log('errors:', errs.length ? errs : 'none');
