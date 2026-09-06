@@ -50,12 +50,12 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   let L = await raw(priya);
   chk('earlier work is kept under its own heading',
       L[0] === P('Earlier work') && L[1] === 'a=1', JSON.stringify(L));
-  chk('a workspace opens for problem 1', L[2] === P('Problem 1') && L[3] === '', JSON.stringify(L));
+  chk('a workspace opens for problem 1', L[2] === P('Problem #1') && L[3] === '', JSON.stringify(L));
   chk('the caret is in the new workspace', (await start(priya)) === 3 && (await focus(priya)) === 3,
       'start ' + (await start(priya)) + ' focus ' + (await focus(priya)));
   let S = await raw(sam);
   chk('an empty board leaves no empty section behind',
-      S.length === 2 && S[0] === P('Problem 1') && S[1] === '', JSON.stringify(S));
+      S.length === 2 && S[0] === P('Problem #1') && S[1] === '', JSON.stringify(S));
 
   await priya.focus('#hidden'); await priya.keyboard.type('y=2');
   L = await raw(priya);
@@ -76,30 +76,41 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   for(let i = 0; i < 4; i++) await priya.keyboard.press('Backspace');
   L = await raw(priya);
   chk('backspace empties the workspace but keeps its first line',
-      L.length === 4 && L[3] === '' && L[2] === P('Problem 1'), JSON.stringify(L));
+      L.length === 4 && L[3] === '' && L[2] === P('Problem #1'), JSON.stringify(L));
   await priya.keyboard.type('y=2');
 
   // ---- problem 2 ----------------------------------------------------------
   await push('x+2');
   L = await raw(priya);
   chk('problem 2 opens a second workspace',
-      L[4] === P('Problem 2') && L[5] === '' && L[3] === 'y=2', JSON.stringify(L));
+      L[4] === P('Problem #2') && L[5] === '' && L[3] === 'y=2', JSON.stringify(L));
   await priya.focus('#hidden'); await priya.keyboard.type('z=3');
   L = await raw(priya);
   chk('typing goes to workspace 2', L[5] === 'z=3', JSON.stringify(L));
+  // each workspace is a panel with its own problem on the right (v36)
+  const panels = await priya.evaluate(() => Array.from(document.querySelectorAll('#viewBoard .workspace')).map(w => ({
+    head: w.querySelector('.wshead').textContent.trim(), cls: w.className,
+    problem: (w.querySelector('.wsproblem') || {}).textContent || '',
+    firstNo: (w.querySelector('.brow:not(.part) .gutter b') || {}).textContent })));
+  chk('one panel per workspace, headed Problem #N',
+      panels.length === 3 && panels[1].head === 'Problem #1' && panels[2].head === 'Problem #2', JSON.stringify(panels.map(p => p.head)));
+  chk('the panel in use is bright and the rest are dimmed',
+      /active/.test(panels[2].cls) && /frozen/.test(panels[0].cls) && /frozen/.test(panels[1].cls), JSON.stringify(panels.map(p => p.cls)));
+  chk('each panel shows its own problem on the right',
+      /x\+?1|x.*1/.test(panels[1].problem) && /2/.test(panels[2].problem) && panels[0].problem === '', JSON.stringify(panels.map(p => p.problem.slice(0, 20))));
+  chk('line numbers restart inside each panel', panels[2].firstNo === '1' && panels[1].firstNo === '1', JSON.stringify(panels.map(p => p.firstNo)));
+  chk('the strip no longer shows the problem boxes',
+      await priya.evaluate(() => getComputedStyle(document.getElementById('probBody')).display === 'none'));
   // the two problems sit side by side, newest on the right (v34)
   const boxes = await priya.evaluate(() => Array.from(document.querySelectorAll('#probBody .probitem'))
     .map(el => { const r = el.getBoundingClientRect(); return {left: Math.round(r.left), top: Math.round(r.top), w: Math.round(r.width)}; }));
-  chk('two problems are shown', boxes.length === 2, JSON.stringify(boxes));
-  chk('problems sit side by side, newest on the right',
-      boxes.length === 2 && boxes[1].left > boxes[0].left + boxes[0].w - 1 && Math.abs(boxes[1].top - boxes[0].top) < 2,
-      JSON.stringify(boxes));
+  chk('the strip still holds every problem (hidden, for the count and the clock)', boxes.length === 2, JSON.stringify(boxes));
   await teacher.waitForTimeout(900);
   const tile = await teacher.evaluate(() => {
     const t = document.querySelector('#tiles .tile');
     return t ? {head: (t.querySelector('.partlabel') || {}).textContent, text: t.textContent} : null;
   });
-  chk('the wall tile shows the workspace in use', !!tile && tile.head === 'Problem 2' && /z/.test(tile.text), JSON.stringify(tile));
+  chk('the wall tile shows the workspace in use', !!tile && tile.head === 'Problem #2' && /z/.test(tile.text), JSON.stringify(tile));
   chk('the tile never shows a heading\'s raw text', !!tile && !/%%P|label/.test(tile.text), JSON.stringify(tile));
 
   // ---- marking one workspace at a time ------------------------------------
@@ -121,14 +132,14 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   await teacher.evaluate(() => document.querySelectorAll('#workLines .line.part .partmark-btn')[1].click());   // Problem 1
   await teacher.waitForTimeout(700);
   let marks = await priya.evaluate(() => window.__chalkline.marks());
-  chk('the student receives the mark for Problem 1', marks['Problem 1'] === true && !marks['Problem 2'], JSON.stringify(marks));
+  chk('the student receives the mark for Problem 1', marks['Problem #1'] === true && !marks['Problem #2'], JSON.stringify(marks));
   const ticks = await priya.evaluate(() => Array.from(document.querySelectorAll('#viewBoard .line.part')).map(r => r.textContent.includes('\u2713')));
   chk('the tick sits on the Problem 1 heading only', JSON.stringify(ticks) === '[false,true,false]', JSON.stringify(ticks));
   const big = await teacher.evaluate(() => document.getElementById('actingCheck').textContent);
-  chk('the big button now marks the current workspace', /Problem 2/.test(big), big);
+  chk('the big button now marks the current workspace', /Problem #2/.test(big), big);
   await teacher.click('#actingCheck'); await teacher.waitForTimeout(700);
   marks = await priya.evaluate(() => window.__chalkline.marks());
-  chk('Mark correct marked Problem 2', marks['Problem 2'] === true && marks['Problem 1'] === true, JSON.stringify(marks));
+  chk('Mark correct marked Problem 2', marks['Problem #2'] === true && marks['Problem #1'] === true, JSON.stringify(marks));
   await teacher.click('#actingBack'); await teacher.waitForTimeout(500);
   const badge = await teacher.evaluate(() => { const k = document.querySelector('#tiles .tile .ticked'); return k ? k.textContent : null; });
   chk('the tile counts marked workspaces', badge === '2/3 ✓', JSON.stringify(badge));
@@ -143,6 +154,19 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   await priya.evaluate(() => window.__chalkline.loadRaw(window.__chalkline.linesRaw()));
   chk('headings round-trip through save and load', JSON.stringify(await raw(priya)) === JSON.stringify(L));
   chk('tex() reads only the maths', !/%%P/.test(await priya.evaluate(() => window.__chalkline.tex())));
+
+  // ---- Hide hides the problems inside the panels; a new push shows them ----
+  await priya.click('#probToggle'); await priya.waitForTimeout(150);
+  chk('Hide hides the problem in each panel',
+      await priya.evaluate(() => getComputedStyle(document.querySelector('#viewBoard .workspace.active .wsproblem')).display === 'none'));
+  await priya.click('#probToggle'); await priya.waitForTimeout(150);
+  chk('Show brings it back',
+      await priya.evaluate(() => getComputedStyle(document.querySelector('#viewBoard .workspace.active .wsproblem')).display !== 'none'));
+
+  // ---- the same sheet pushed again is still a new problem (prefix rule) ----
+  await push('x+2');
+  L = await raw(priya);
+  chk('pushing the same problem again opens another workspace', L[6] === P('Problem #3') && L[7] === '', JSON.stringify(L));
 
   console.log(`\nworkspaces: ${pass} passed, ${fail} failed`);
   console.log('errors:', errs.length ? errs : 'none');

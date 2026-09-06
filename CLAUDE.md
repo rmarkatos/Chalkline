@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v35` at the time of writing). **Bump it in
+There is a version chip on screen (`v36` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~620 assertions plus 500 generated round-trips.
+23 suites, ~630 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -301,6 +301,25 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 (`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**Workspace panels (v36).** `render()` is now `renderRows()` — one flat
+`.line.brow` row per line, exactly as before — followed by `groupIntoPanels()`,
+which folds the rows into one `<section class="workspace">` per heading:
+`.wshead` (label + ✓), `.wslines` on the left, `.wsproblem` on the right
+holding that workspace's own problem (`itemsForLabel` reads the number out
+of the heading; `buildProblemItem` is the box builder shared with the strip).
+The panel in use is `.active`; the rest are `.frozen` and dimmed as a whole
+(per-line dimming is gone; per-line `pointer-events:none` stays). Line
+numbers restart per panel (`sectionStart`). Labels are **Problem #N**. The
+strip keeps only its count and clock (`.inpanels`); **Hide** now hides the
+problems inside the panels (`.board.hideproblems`) and a new push shows
+them again. Rows keep document order, so the index into `boardRows()` is the
+index into `lines[]`. **Count `.brow`, never `.line`**: a problem rendered
+inside a panel is made of `.line` rows too. `newItemIndices` treats
+everything after the old list, when the old list is still the front of the
+new one, as new — so the same sheet pushed twice opens a second workspace.
+Ryan's "if a student switches to a different panel, dim it" was read as
+"the panel they are moved *out of* dims" — old panels stay read-only.
 
 **Headings render once (v35).** In `renderStatic` and `drawWorkPanel` the
 *graph* branch appends its row and `return`s; the heading branch did not, so

@@ -463,8 +463,29 @@ button{font:inherit;color:inherit}
 .partlabel{font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted);
   padding:8px 0 2px; margin-top:8px; border-top:1px solid var(--line)}
 .line.part:first-child .partlabel{margin-top:0; border-top:0}
-.board .line.frozen{opacity:.55; pointer-events:none}
-.board .line.frozen.part{opacity:.8}
+.board .line.frozen{pointer-events:none}    /* dimming is per panel, below */
+/* one panel per workspace: header, lines on the left, its problem on the
+   right; the panel in use is bright and the rest are dimmed as a whole */
+.workspace{border:1px solid var(--line); border-radius:12px; margin:10px 0 14px;
+  background:var(--surface); overflow:hidden}
+.workspace.active{border-color:var(--accent)}
+.workspace.frozen{opacity:.5}
+.workspace.fresh{animation:probflash 2.6s ease-out}
+.wshead{display:flex; align-items:center; gap:8px; padding:8px 14px; font-size:11px;
+  text-transform:uppercase; letter-spacing:.09em; color:var(--muted); border-bottom:1px solid var(--line-soft)}
+.wsbody{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,46%)}
+.wsbody.noproblem{grid-template-columns:minmax(0,1fr)}
+.wslines{padding:6px 0; min-width:0}
+.wsproblem{border-left:1px dashed var(--line); padding:10px 14px; min-width:0; overflow:auto}
+.wsproblem .probitem{width:auto; border-right:0; padding:0}
+.wsproblem .probimgs img{max-height:360px; max-width:100%}
+.board.timeup .workspace.active .wsproblem{opacity:.35; transition:opacity .6s ease}
+.line.part.brow{display:none}                 /* the heading is the panel header */
+.problemstrip.inpanels .probbody{display:none}
+.board.hideproblems .wsproblem{display:none}
+.board.hideproblems .wsbody{grid-template-columns:minmax(0,1fr)}
+@media (max-width:900px){ .wsbody{grid-template-columns:minmax(0,1fr)}
+  .wsproblem{border-left:0; border-top:1px dashed var(--line)} }
 /* a mark on a workspace: a tick by its heading (student, panel), a button
    in the panel to set it, and n/m on the tile */
 .partmark{margin-left:8px; color:var(--accent-ink); font-weight:600}
@@ -791,7 +812,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v35</span></p>
+      <span class="ver">v36</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -832,7 +853,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v35</span></p>
+      <span class="ver">v36</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -868,7 +889,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v35</span>
+      <span class="ver">v36</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -907,7 +928,7 @@ button{font:inherit;color:inherit}
     <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
-    <span class="ver">v35</span>
+    <span class="ver">v36</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -1044,10 +1065,31 @@ function itemKeys(items){
 /* Indices in `after` whose content was not in `before` — the problems the
    teacher just pushed. Pure, so it can be tested. */
 function newItemIndices(beforeKeys, afterKeys){
-  const seen = new Set(beforeKeys || []);
+  const b = beforeKeys || [], a = afterKeys || [];
+  // problems only ever stack: if what we had is still the front of the list,
+  // everything after it is new — including the same sheet pushed twice,
+  // which a content comparison could not tell apart
+  if(b.length <= a.length && b.every((k, i) => a[i] === k)){
+    const out = []; for(let i = b.length; i < a.length; i++) out.push(i); return out;
+  }
+  const seen = new Set(b);
   const out = [];
-  (afterKeys || []).forEach((k, i) => { if(!seen.has(k)) out.push(i); });
+  a.forEach((k, i) => { if(!seen.has(k)) out.push(i); });
   return out;
+}
+/* Which pushed problems a workspace is for, from its heading. */
+function itemsForLabel(label){
+  const m = /#?(\d+)(?:\s*[\u2013-]\s*#?(\d+))?/.exec(String(label || ""));
+  if(!m || !/problem/i.test(label)) return [];
+  const a = +m[1] - 1, b = m[2] ? +m[2] - 1 : a;
+  const out = [];
+  for(let i = a; i <= b; i++) if(problemItems[i]) out.push(i);
+  return out;
+}
+/* Where the line's own workspace starts, so numbering restarts per panel. */
+function sectionStart(idx){
+  for(let i = idx; i >= 0; i--) if(lines[i].kind === "part") return i + 1;
+  return 0;
 }
 let teacherBeat = null, myTeacherName = "";
 /* A clock time for "joined 10:42" — the local wall clock, minutes only */
@@ -1548,17 +1590,26 @@ function radSvg(){
 }
 
 function render(){
+  renderRows();
+  groupIntoPanels();
+}
+
+/* One .line.brow per line, flat, exactly as it always was. */
+function renderRows(){
   syncField();
   boardEl.textContent = "";
   lines.forEach((ln, idx) => {
     const row = document.createElement("div");
-    row.className = "line" + (idx === focusLine ? " focus" : "");
+    // "brow" marks a row of the board itself: a problem shown inside a panel
+    // also renders as .line rows, and anything that counts rows must not
+    // count those
+    row.className = "line brow" + (idx === focusLine ? " focus" : "");
     row.__lineIndex = idx;
 
     const g = document.createElement("div");
     g.className = "gutter";
     const b = document.createElement("b");
-    b.textContent = idx + 1;
+    b.textContent = idx - sectionStart(idx) + 1;
     g.appendChild(b);
 
     const body = document.createElement("div");
@@ -1686,8 +1737,9 @@ function fieldKey(e){
   return false;
 }
 
+function boardRows(){ return [...boardEl.querySelectorAll(".brow")]; }
 function paintFocus(){
-  [...boardEl.children].forEach((r,i)=> r.classList.toggle("focus", i===focusLine));
+  boardRows().forEach((r,i)=> r.classList.toggle("focus", i===focusLine));
 }
 
 /* stretch ( ) [ ] | { } to the height of their contents */
@@ -1798,7 +1850,7 @@ function gotoLine(idx){
   focusLine = idx;
   const ln = lines[idx];
   if(ln.kind === "math"){ cur = {list:ln.root, i:ln.root.length}; sel=null; render(); hidden.focus(); }
-  else { render(); const inp = boardEl.children[idx].querySelector("input"); if(inp) inp.focus(); }
+  else { render(); const inp = boardRows()[idx].querySelector("input"); if(inp) inp.focus(); }
   return true;
 }
 
@@ -2299,7 +2351,7 @@ function insertLineAfter(idx, ln){
   lines.splice(idx+1, 0, ln);
   focusLine = idx+1;
   if(ln.kind === "math"){ cur = {list:ln.root, i:0}; sel=null; render(); hidden.focus(); }
-  else { render(); const inp = boardEl.children[focusLine].querySelector("input"); if(inp) inp.focus(); }
+  else { render(); const inp = boardRows()[focusLine].querySelector("input"); if(inp) inp.focus(); }
 }
 function addGraphLine(){
   const at = focusLine;
@@ -3857,8 +3909,8 @@ function marksSummary(marks, labels){
 }
 function workspaceLabel(idx){
   if(!idx || !idx.length) return "Problem";
-  return idx.length === 1 ? "Problem " + (idx[0] + 1)
-                          : "Problems " + (idx[0] + 1) + "\u2013" + (idx[idx.length - 1] + 1);
+  return idx.length === 1 ? "Problem #" + (idx[0] + 1)
+                          : "Problems #" + (idx[0] + 1) + "\u2013" + (idx[idx.length - 1] + 1);
 }
 /* A new problem arrived: open a fresh workspace under everything so far.
    Work done before the first problem is kept, under its own heading, unless
@@ -3875,12 +3927,55 @@ function openWorkspace(label){
   if(typeof schedulePublish === "function") schedulePublish();
   // after the problem strip has done its own scrolling, land on the new space
   setTimeout(() => {
-    const rows = boardEl.querySelectorAll(".line");
+    const rows = boardRows();
     const r = rows[rows.length - 1];
+    const ws = r && r.closest(".workspace"); if(ws) ws.classList.add("fresh");
     if(r && r.scrollIntoView) r.scrollIntoView({behavior:"smooth", block:"end"});
     try{ hidden.focus(); }catch(e){}
   }, 250);
 }
+/* After the rows are drawn, fold them into one panel per workspace: a
+   header with the problem number, the lines on the left, the problem on the
+   right. The panel the student is in is bright; the others are dimmed as a
+   whole. Rows keep their order, so anything that counts .brow rows still
+   sees the same list. A board with no headings stays flat. */
+function groupIntoPanels(){
+  if(!lines.some(l => l.kind === "part")) return;
+  const rows = boardRows();
+  const start = activeStart();
+  const frag = document.createDocumentFragment();
+  let panel = null, box = null;
+  const open = (label, firstIdx) => {
+    panel = document.createElement("section");
+    const active = firstIdx >= start - 1;
+    panel.className = "workspace " + (active ? "active" : "frozen");
+    const head = document.createElement("div"); head.className = "wshead";
+    const t = document.createElement("span"); t.textContent = label || "Problem";
+    head.appendChild(t);
+    if(myMarks[label]){ const k = document.createElement("span"); k.className = "partmark"; k.textContent = "\u2713"; head.appendChild(k); }
+    panel.appendChild(head);
+    const body = document.createElement("div"); body.className = "wsbody";
+    box = document.createElement("div"); box.className = "wslines";
+    body.appendChild(box);
+    const items = itemsForLabel(label);
+    if(items.length){
+      const aside = document.createElement("aside"); aside.className = "wsproblem";
+      items.forEach(i => aside.appendChild(buildProblemItem(problemItems[i], i, items.length > 1)));
+      body.appendChild(aside);
+    } else body.classList.add("noproblem");
+    panel.appendChild(body);
+    frag.appendChild(panel);
+  };
+  rows.forEach(row => {
+    const idx = row.__lineIndex, ln = lines[idx];
+    if(ln.kind === "part"){ open(ln.p.label, idx); box.appendChild(row); return; }
+    if(!panel) open("Earlier work", idx);
+    box.appendChild(row);
+  });
+  boardEl.textContent = "";
+  boardEl.appendChild(frag);
+}
+
 /* Clear board clears the workspace the student is in, not the frozen ones. */
 function clearActive(){
   const s = activeStart();
@@ -4995,6 +5090,7 @@ function join(asRole, room, name){
       if(stripKey() === before) return;
       document.getElementById("probStrip").classList.remove("collapsed");
       document.getElementById("probToggle").textContent = "Hide";
+      boardEl.classList.remove("hideproblems");       // a new problem is shown
       // the strip was just rebuilt, one .probitem per item in order, so an
       // index into problemItems is an index into its children
       const fresh = newItemIndices(beforeKeys, itemKeys(problemItems));
@@ -5641,6 +5737,7 @@ function paintClock(){
     // the problem fades once its time is over; a fresh timer or the next
     // problem brings it back (both run through here with done === false)
     document.getElementById("probStrip").classList.toggle("expired", !!(done && timerEnd));
+    boardEl.classList.toggle("timeup", !!(done && timerEnd));
   }
   if(done){ clearInterval(timerTick); timerTick = null; }
   const bar = document.getElementById("composerBar");
@@ -5677,26 +5774,12 @@ function stripKey(){
   return problemItems.map(it => (it.lines || []).join("\u0001") + "\u0002" +
                                 (it.images || []).length).join("\u0003");
 }
-function showStrip(){
-  const strip = document.getElementById("probStrip");
-  const body  = document.getElementById("probBody");
-  const has = problemItems.length > 0;
-  strip.hidden = !(has || timerEnd);
-  document.getElementById("plabel").textContent =
-    problemItems.length > 1 ? problemItems.length + " problems" : "The problem";
-  document.getElementById("probToggle").hidden = !has;
-
-  // images are expensive to re-decode, so only redraw when something changed.
-  // This runs even while the strip is hidden, so clearing really clears.
-  const key = stripKey();
-  if(key === stripDrawn) return;
-  stripDrawn = key;
-  body.textContent = "";
-
-  problemItems.forEach((it, i) => {
+/* One pushed problem as a box: number, pictures, lines. Used by the strip
+   and by each workspace panel, which shows its own problem on the right. */
+function buildProblemItem(it, i, numbered){
     const wrap = document.createElement("div");
     wrap.className = "probitem";
-    if(problemItems.length > 1){
+    if(numbered){
       const n = document.createElement("div");
       n.className = "probnum";
       n.textContent = i + 1;
@@ -5723,8 +5806,26 @@ function showStrip(){
       inner.appendChild(lines);
     }
     wrap.appendChild(inner);
-    body.appendChild(wrap);
-  });
+    return wrap;
+}
+function showStrip(){
+  const strip = document.getElementById("probStrip");
+  const body  = document.getElementById("probBody");
+  const has = problemItems.length > 0;
+  strip.classList.toggle("inpanels", lines.some(l => l.kind === "part"));
+  strip.hidden = !(has || timerEnd);
+  document.getElementById("plabel").textContent =
+    problemItems.length > 1 ? problemItems.length + " problems" : "The problem";
+  document.getElementById("probToggle").hidden = !has;
+
+  // images are expensive to re-decode, so only redraw when something changed.
+  // This runs even while the strip is hidden, so clearing really clears.
+  const key = stripKey();
+  if(key === stripDrawn) return;
+  stripDrawn = key;
+  body.textContent = "";
+
+  problemItems.forEach((it, i) => body.appendChild(buildProblemItem(it, i, problemItems.length > 1)));
 }
 
 /* what the teacher has written back, kept apart from the student's own work */
@@ -5740,6 +5841,7 @@ function showTick(){
 document.getElementById("probToggle").addEventListener("click", e => {
   const strip = document.getElementById("probStrip");
   const off = strip.classList.toggle("collapsed");
+  boardEl.classList.toggle("hideproblems", off);   // the boxes live in the panels now
   e.currentTarget.textContent = off ? "Show" : "Hide";
   refocusEditor();
 });

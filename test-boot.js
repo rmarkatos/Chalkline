@@ -195,6 +195,7 @@ const FAKE_CLERK = `window.CHALKLINE_CLERK = {
   chk('the first problem ever is new', JSON.stringify(await ni([], ['a'])) === '[0]');
   chk('the same set again is not news', JSON.stringify(await ni(['a', 'b'], ['a', 'b'])) === '[]');
   chk('a replaced problem is new', JSON.stringify(await ni(['a'], ['b'])) === '[0]');
+  chk('the same problem pushed again is new (it stacked on the end)', JSON.stringify(await ni(['a'], ['a', 'a'])) === '[1]');
 
   /* When the clock runs out the problem fades; a fresh timer brings it back. */
   await p.evaluate(() => window.__chalkline.asStudent());
