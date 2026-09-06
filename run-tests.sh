@@ -9,6 +9,7 @@ python3 build.py >/dev/null || { echo "build failed"; exit 1; }
 
 filter="${1:-}"
 bad=0
+failed=""
 for f in test.js test-text.js test-raw.js test-parser.js test-focus.js \
          test-delims.js test-app-editor.js test-graph.js \
          test-class.js test-push.js test-persist.js test-late.js \
@@ -20,6 +21,9 @@ for f in test.js test-text.js test-raw.js test-parser.js test-focus.js \
   line=$(printf '%s' "$out" | grep -ioE "[0-9]+ passed, [0-9]+ failed|[0-9]+/[0-9]+ passed|ALL ROUND-TRIPS CLEAN" | tail -1)
   # test.js reports one line per case rather than a total
   [ -z "$line" ] && line="$(printf '%s' "$out" | grep -c '\[PASS\]') passed, $(printf '%s' "$out" | grep -c '\[FAIL\]') failed"
+  # a suite that crashed before testing anything prints "0 passed, 0 failed",
+  # which is not a pass — nothing was tested
+  case "$line" in "0 passed, 0 failed") line="(crashed before testing anything)";; esac
   case "$line" in
     *" 0 failed"*|*"ALL ROUND-TRIPS CLEAN"*) mark="ok  ";;
     # suites that report "N/N passed" are green only when the two agree,
@@ -32,8 +36,8 @@ for f in test.js test-text.js test-raw.js test-parser.js test-focus.js \
   # a suite that printed nothing usable has fallen over
   [ -z "$line" ] && { mark="FAIL"; bad=1; line="(no result — see below)"; }
   printf '%s %-20s %s\n' "$mark" "$f" "$line"
-  [ "$mark" = "FAIL" ] && printf '%s\n' "$out" | tail -20
+  [ "$mark" = "FAIL" ] && { failed="$failed $f"; printf '%s\n' "$out" | tail -20; }
 done
 echo
-[ "$bad" = 0 ] && echo "all green" || echo "something failed"
+[ "$bad" = 0 ] && echo "all green" || echo "something failed:$failed"
 exit $bad
