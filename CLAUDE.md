@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v34` at the time of writing). **Bump it in
+There is a version chip on screen (`v35` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~610 assertions plus 500 generated round-trips.
+23 suites, ~620 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -301,6 +301,15 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 (`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**Headings render once (v35).** In `renderStatic` and `drawWorkPanel` the
+*graph* branch appends its row and `return`s; the heading branch did not, so
+it fell through into the maths renderer and typeset its own raw text —
+`%%P{"label":…}` — under the label, and on the panel a heading picked up a
+"+ note". Both branches are self-contained now. **Any new line kind added to
+those two renderers must append its row and return.** `test-workspaces`
+asserts a tile and the panel never contain `%%P`, and that a note still
+opens on a work line of a board with headings.
 
 **Problems sit side by side (v34).** `.probbody` is a horizontal flex row,
 newest on the right, scrolling sideways when full; each `.probitem` is a

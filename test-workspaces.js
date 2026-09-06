@@ -100,12 +100,24 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
     return t ? {head: (t.querySelector('.partlabel') || {}).textContent, text: t.textContent} : null;
   });
   chk('the wall tile shows the workspace in use', !!tile && tile.head === 'Problem 2' && /z/.test(tile.text), JSON.stringify(tile));
+  chk('the tile never shows a heading\'s raw text', !!tile && !/%%P|label/.test(tile.text), JSON.stringify(tile));
 
   // ---- marking one workspace at a time ------------------------------------
   await teacher.click('#tiles .tile');                 // Priya sorts first
   await teacher.waitForTimeout(400);
   const btns = await teacher.evaluate(() => Array.from(document.querySelectorAll('#workLines .line.part .partmark-btn')).map(b => b.textContent));
   chk('the open panel has a mark button on every heading', btns.length === 3, JSON.stringify(btns));
+  const panelRaw = await teacher.evaluate(() => document.getElementById('workLines').textContent);
+  chk('the panel never shows a heading\'s raw text', !/%%P|label/.test(panelRaw), panelRaw.slice(0, 80));
+  const noteBtns = await teacher.evaluate(() => ({ onHeadings: document.querySelectorAll('#workLines .wrow.part .wadd').length,
+                                                   onLines: document.querySelectorAll('#workLines .wrow:not(.part) .wadd').length }));
+  chk('note buttons sit on lines of work, not on headings', noteBtns.onHeadings === 0 && noteBtns.onLines >= 1, JSON.stringify(noteBtns));
+  await teacher.evaluate(() => { const b = [...document.querySelectorAll('#workLines .wrow:not(.part) .wadd')].pop();
+                                 b.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true})); });
+  await teacher.waitForTimeout(300);
+  chk('a note can still be opened on a line of a board with headings',
+      await teacher.evaluate(() => !!document.querySelector('#workLines .wnote.here')));
+  await teacher.focus('#hidden'); await teacher.keyboard.press('Escape'); await teacher.waitForTimeout(200);
   await teacher.evaluate(() => document.querySelectorAll('#workLines .line.part .partmark-btn')[1].click());   // Problem 1
   await teacher.waitForTimeout(700);
   let marks = await priya.evaluate(() => window.__chalkline.marks());

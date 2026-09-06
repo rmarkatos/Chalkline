@@ -787,7 +787,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v34</span></p>
+      <span class="ver">v35</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -828,7 +828,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v34</span></p>
+      <span class="ver">v35</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -864,7 +864,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v34</span>
+      <span class="ver">v35</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -903,7 +903,7 @@ button{font:inherit;color:inherit}
     <span class="tag">Typing mathematics made user friendly</span>
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
-    <span class="ver">v34</span>
+    <span class="ver">v35</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -5190,6 +5190,11 @@ function renderStatic(host, arr, deferFit, view){
       const h = document.createElement("div"); h.className = "partlabel";
       h.textContent = (pl && pl.p.label) || "Problem";
       body.appendChild(h);
+      // a heading is complete here; without this return it fell through to
+      // the maths renderer below and typeset its own raw text under the label
+      row.append(g, body);
+      host.appendChild(row);
+      return;
     } else if(isGraphText(t)){
       const gl = graphFromText(t);
       const sol = gl ? solveGraph(gl.g) : {err:"?"};
@@ -5216,9 +5221,9 @@ function renderStatic(host, arr, deferFit, view){
     row.append(g, body);
     host.appendChild(row);
   });
-  if(rows.length > 7){
+  if(shown.length > 7){
     const m = document.createElement("div");
-    m.className = "blank"; m.textContent = "+" + (rows.length - 7) + " more";
+    m.className = "blank"; m.textContent = "+" + (shown.length - 7) + " more";
     host.appendChild(m);
   }
   if(!deferFit) fitDelims(host);
@@ -5423,7 +5428,10 @@ function drawWorkPanel(){
       btn.textContent = on ? "\u2713 marked" : "\u2713 mark";
       btn.addEventListener("click", e => { e.stopPropagation(); setMark(b, label, !on); });
       h.appendChild(btn);
-      f.appendChild(h);
+      body.appendChild(h);
+      row.append(g, body);
+      host.appendChild(row);
+      return;                      // notes go on lines of work, not on headings
     } else if(isGraphText(t)){
       const gl = graphFromText(t);
       const sol = gl ? solveGraph(gl.g) : {err:"?"};
