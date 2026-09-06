@@ -24,8 +24,17 @@ supporting. After any change:
 
 ```bash
 python3 build.py       # writes chalkline-board.html and index.html
-./run-tests.sh         # runs all 23 suites, prints one line each
+./run-tests.sh         # runs all 22 suites, prints one line each
+git push               # deploys — index.html on main IS the live site
 ```
+
+**If `supabase-schema.sql` changed**, the database has to change with it:
+`build.py` also writes `supabase-schema.local.sql` with Ryan's email filled
+in, and he pastes that into Supabase → SQL Editor → Run. The app and the
+schema must ship together. The file is safe to re-run — it never drops a
+table or a row, only rewrites the policies.
+
+**Pushing to `main` deploys.** For anything half-built, work on a branch.
 
 `index.html` is what goes on GitHub Pages. `chalkline-board.html` is the same
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
@@ -142,7 +151,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~570 assertions plus 500 generated round-trips.
+22 suites, ~560 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -202,9 +211,24 @@ rules suites test yesterday's code.
 - **Google's secret scanner** flags the Firebase web API key on every push. It
   is an identifier, not a credential; Google's own docs say so. Close the alert
   as a false positive. Access is decided by the rules.
-- **A student who reloads mid-lesson** becomes a new student. Their old tile
-  lingers up to 30s until the presence sweep. That is the chosen cost of "every
-  visit is a first visit".
+- **A student who reloads mid-lesson** is the same student — they have an
+  account now. (Before v28 they became a new one; that was the cost of "every
+  visit is a first visit", which no longer applies.)
+- **A stale page.** After a deploy, a normal reload can serve the previous
+  build for a while. Half of one evening's confusion was a student window on
+  the old build. `⌘⇧R`, or a fresh private window, before believing a bug.
+- **"Couldn't find your account."** Clerk's box defaults to *Sign in*; a new
+  person needs *Sign up*, the small link underneath. Every first-timer hits
+  this, Ryan included.
+- **Testing as a student on your own machine.** A Gmail address with a `+tag`
+  (`name+test1@gmail.com`) is a separate account to Clerk but lands in the
+  same inbox, so the verification code is readable. Use a private window —
+  a second tab shares the sign-in.
+- **Supabase's live updates do not arrive.** Established in real use: the
+  waiting queue stayed empty, a pushed picture never reached students (the
+  timer did — it is small), and the wall stopped hearing about boards. The
+  cause has not been pinned down; plausibly Realtime never received the Clerk
+  token. The app no longer depends on it — see *Ask, as well as listen*.
 
 ---
 
@@ -218,9 +242,37 @@ partner, so `[)` stays as typed. The space bar inserts a space everywhere
 except straight after a `\command` and at the end of a script, where LaTeX
 itself spends it.
 
-**Classroom.** Teacher sign-in (email/password, rules check
-`auth.token.email`), the wall, push a problem (PNG or PDF, several stack up), a
-timer that locks input, feedback, per-line notes, a checkmark.
+**Accounts and the roster (v28).** Everybody signs in with Clerk — email and
+password, no Google, by Ryan's choice. A student picks **Algebra 2** or
+**AP Calculus AB** on a splash screen and waits; Ryan sees *N waiting* on his
+wall with Approve / Not in this class. A waiting student's page lets them in
+by itself. Approval is once, not per lesson. A removed student is not offered
+the class again. Ryan never appears in his own queue. Confirmed working with
+real students on other machines.
+
+**Classroom.** The wall, push a problem (PNG or PDF, several stack up), a
+timer that locks input, feedback, per-line notes, a checkmark. All unchanged
+above the sync layer.
+
+### Ask, as well as listen
+
+`SupabaseSync` subscribes to live changes **and re-reads every piece of its
+state every 2.5 seconds** — boards, feedback, checks, problem, timer, session.
+The approvals queue and the waiting student's page poll too. This is
+deliberate, not a stopgap:
+
+- The live channel can fail to start for reasons nothing on screen explains,
+  and it drops messages too big to carry. Both happened.
+- The consequence was not just a quiet wall. The wall sweeps any board silent
+  for 30s **and asks the database to delete it**. A wall that has stopped
+  hearing decides everyone has left and erases work students are still
+  writing. That is why `drop(id)` now only deletes a row whose own timestamp
+  is over 30s old — the database judges, not a page that may not be listening.
+- The problem is always re-read from its row, never taken from the
+  notification. A pushed picture is far larger than a live message carries.
+
+If Realtime is ever made to work, keep the polling. It is cheap and it cannot
+silently stop.
 
 **Graphing.** Students state *key features* — asymptote, intercepts, base — and
 the curve is drawn from them; the equation appears only when they ask for it,
@@ -228,15 +280,23 @@ so it confirms their algebra. One family so far: **logarithmic**.
 
 ### Next
 
-1. **More families.** `FAMILIES` is a table; each entry declares the features it
-   needs and how to solve itself. Linear, quadratic, exponential and
-   polynomial-from-roots are each a short solve. Rational needs renderer work
-   for poles. **Trig needs parameter inputs, not points** — points do not
-   determine a periodic function.
-2. **A family picker.** Every graph line is logarithmic right now.
-3. **Zoom and pan** on a graph; the window is computed from the features.
-4. `board.html` and `chalkline-equation-editor.html` are dead — the editor
-   suites test the real app now. They are not in this folder.
+1. **Roster management.** The wall shows only who is *waiting*. There is no
+   list of who is already approved and no way to remove someone, and a
+   student who picks the wrong class cannot be moved. Short job; the
+   `enrolments` table and policies already allow all of it.
+2. **Clerk's box should open on Sign up**, not Sign in. Every new person's
+   first action is Sign up and the link is small.
+3. **A test that drives `SupabaseSync`.** The 11 database suites still drive
+   the Firebase path, which is what runs when settings are empty. Nothing
+   automated exercises the Supabase path; real students found the last two
+   bugs. A stand-in for Supabase, or the schema suite's PGlite, is the way in.
+4. **Then graphing**, unchanged from before: a family picker first (every
+   graph line is logarithmic), then linear and quadratic, then exponential.
+   `FAMILIES` is a table; each entry declares its features and how to solve
+   itself. Rational needs renderer work for poles. **Trig needs parameter
+   inputs, not points.**
+5. **The Firebase path can go** once (3) exists. Until then it is the only
+   thing the database suites test, so it stays.
 
 ---
 
@@ -246,11 +306,19 @@ so it confirms their algebra. One family so far: **logarithmic**.
 | --- | --- |
 | `app.html` | the source — the only file you edit |
 | `build.py` | writes both builds |
-| `firebase-config.json` | the Firebase settings, injected at build time |
+| `supabase-config.json` | Supabase address + publishable key, injected at build time |
+| `clerk-config.json` | Clerk publishable key, injected at build time |
+| `firebase-config.json` | the old Firebase settings — still injected, only used when the two above are empty |
+| `chalkline-local.json` | Ryan's email. **Git-ignored. Never leaves the laptop.** |
+| `supabase-schema.sql` | the database and rules — the replacement for `firebase-rules.json`. Placeholder email |
+| `supabase-schema.local.sql` | the same with the real email, written by `build.py`. **Git-ignored.** This is what gets pasted into Supabase |
 | `index.html` | built + configured — this is what goes on GitHub Pages |
-| `chalkline-board.html` | built, unconfigured — what the tests drive |
-| `firebase-rules.json` | paste into Firebase → Realtime Database → Rules → Publish |
-| `diagnose.html` | a page that checks the Firebase setup step by step and says where it stops |
+| `chalkline-board.html` | built, no settings at all — what the tests drive |
+| `CNAME` | tells GitHub Pages the domain is `chalklineschool.com` |
+| `firebase-rules.json` | the old rules. Kept for the Firebase path; placeholder email |
+| `diagnose.html` | checks the *Firebase* setup step by step. Not updated for Supabase |
 | `run-tests.sh` | all suites, one line each |
 | `test*.js` | the suites |
-| `fake-firebase*.js` | the stand-in database, with and without rules enforcement |
+| `test-schema.js` | runs the schema against real Postgres (PGlite) and tries to break the rules as four different people |
+| `test-boot.js` | the only suite that runs with accounts *on* — settings pointed at nowhere — to catch a declaration used before it is reached |
+| `fake-firebase*.js` | the stand-in Firebase, with and without rules enforcement |
