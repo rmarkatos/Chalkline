@@ -854,7 +854,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v42</span></p>
+      <span class="ver">v43</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -895,7 +895,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v42</span></p>
+      <span class="ver">v43</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -931,7 +931,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v42</span>
+      <span class="ver">v43</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -971,7 +971,7 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v42</span>
+    <span class="ver">v43</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -2599,7 +2599,7 @@ function insertSeq(nodes, offset){
 }
 
 const PALETTE = [
-  ["Templates", 4, [
+  ["Structure", 4, [
     {id:"frac", face:"\\frac{a}{b}", tex:"\\frac{a}{b}",
      act:() => insertTemplate(frac(), true)},
     {id:"sqrt", face:"\\sqrt{x}", tex:"\\sqrt{x}",
@@ -2608,6 +2608,14 @@ const PALETTE = [
      act:() => insertTemplate(root())},
     {id:"abs",  face:"\\left|x\\right|", tex:"\\left| x \\right|",
      act:() => insertTemplate(delim("|","|"), true)},
+    /* a piecewise function: the student picks two or three pieces, and gets
+       an empty slot for each piece and one for its domain beside it */
+    {id:"pw2", sub:"2 pieces", face:"\\begin{cases} {} & {} \\\\ {} & {} \\end{cases}",
+     tex:"\\begin{cases} f(x) & x<a \\\\ g(x) & x\\ge a \\end{cases}",
+     act:() => insertTemplate(cases(2, 2))},
+    {id:"pw3", sub:"3 pieces", face:"\\begin{cases} {} & {} \\\\ {} & {} \\\\ {} & {} \\end{cases}",
+     tex:"\\begin{cases} f(x) & x<a \\\\ g(x) & a\\le x<b \\\\ h(x) & x\\ge b \\end{cases}",
+     act:() => insertTemplate(cases(3, 2))},
   ]],
   ["Operators", 4, [
     {id:"plus",   face:"+",           tex:"+",           act:() => insert(op("+","+"))},

@@ -216,6 +216,19 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
     icons: document.querySelectorAll('#prail .prail-btn').length,
     keys: getComputedStyle(document.getElementById('keys')).display,
     saved: (() => { try { return localStorage.getItem('chalkline.palette'); } catch (e) { return null; } })() }));
+  // piecewise: two or three pieces, every cell an empty slot (v43)
+  const before2 = await priya.evaluate(() => window.__chalkline.tex());
+  await priya.evaluate(() => { const b = document.querySelector('.pbtn[data-id="pw2"]'); if(b) b.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true})); });
+  await priya.waitForTimeout(120);
+  const pw2 = await priya.evaluate(() => window.__chalkline.tex());
+  chk('the 2-piece button inserts a piecewise function with two rows',
+      pw2 !== before2 && /\\begin\{cases\}/.test(pw2) && (pw2.match(/&/g) || []).length === 2, pw2.slice(-80));
+  await priya.evaluate(() => { const b = document.querySelector('.pbtn[data-id="pw3"]'); if(b) b.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true})); });
+  await priya.waitForTimeout(120);
+  const pw3 = await priya.evaluate(() => window.__chalkline.tex());
+  chk('the 3-piece button inserts three rows', (pw3.match(/&/g) || []).length === 5, pw3.slice(-100));
+  chk('the pieces are empty slots for the student to fill',
+      await priya.evaluate(() => document.querySelectorAll('#viewBoard .workspace.active .brow.focus .slot, #viewBoard .brow.focus .empty, #viewBoard .brow.focus .ph').length >= 4));
   chk('every rail icon fits inside its button',
       await priya.evaluate(() => Array.from(document.querySelectorAll('#prail .prail-btn')).every(btn => {
         const b = btn.getBoundingClientRect(), f = btn.querySelector('.face').getBoundingClientRect();
@@ -228,7 +241,7 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
     const rail = document.querySelector('#prail .prail-btn').getBoundingClientRect();
     return {hidden: p.hidden, btns: p.querySelectorAll('.pbtn').length, title: p.querySelector('.lbl').textContent, besideRail: r.left > rail.right}; });
   chk('a rail icon opens a pop-out beside it with the section\'s symbols',
-      !pop.hidden && pop.btns > 0 && pop.title === 'Templates' && pop.besideRail, JSON.stringify(pop));
+      !pop.hidden && pop.btns > 0 && pop.title === 'Structure' && pop.besideRail, JSON.stringify(pop));
   const before = await priya.evaluate(() => window.__chalkline.tex());
   await priya.evaluate(() => { const b = document.querySelector('#ppop .pbtn'); if(b) b.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true})); });
   await priya.waitForTimeout(150);

@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v42` at the time of writing). **Bump it in
+There is a version chip on screen (`v43` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~680 assertions plus 500 generated round-trips.
+23 suites, ~690 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -314,6 +314,16 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 (`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**v43 — "Structure", and a piecewise function.** The first palette section
+is *Structure* (was Templates). Two new buttons, `pw2` and `pw3`, insert
+`cases(2, 2)` / `cases(3, 2)` — the existing `cases` node, every cell an
+empty `L()` list, so each piece gets an orange slot for its value and one
+for its domain. The button faces are the same structure with `{}` cells
+(`\begin{cases} {} & {} \\ … \end{cases}`); that parses with no warnings
+and renders four/six slots. `test-workspaces` inserts both and counts the
+`&` separators. The v40 timer-rule reading is parked by Ryan ("will come
+back to that").
 
 **v42 — the typing shortcuts.** Six rows, one line each at the panel's
 width (`white-space:nowrap`, terse wording): shift + 4 · words ↔ maths;
