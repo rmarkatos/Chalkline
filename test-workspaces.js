@@ -64,18 +64,20 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   L = await raw(priya);
   chk('typing lands in the new workspace', L[3] === 'y=2' && L[1] === 'a=1', JSON.stringify(L));
 
-  // ---- the frozen section cannot be reached or changed ---------------------
+  // ---- an untimed workspace stays open: the student may go back into it ---
   await priya.keyboard.press('Home'); await priya.keyboard.press('ArrowUp');
   chk('up from the first line of a workspace stays put', (await focus(priya)) === 3, 'focus ' + (await focus(priya)));
-  await priya.evaluate(() => window.__chalkline.focusTo(1));   // force it, as a test
+  await priya.evaluate(() => window.__chalkline.focusTo(1));   // back into Earlier work
   await priya.keyboard.type('9');
   L = await raw(priya);
-  chk('a frozen line cannot be typed into', L[1] === 'a=1', JSON.stringify(L));
+  chk('an untimed earlier workspace can still be written in', L[1] === 'a=19', JSON.stringify(L));
   await priya.keyboard.press('Backspace');
   L = await raw(priya);
-  chk('a frozen line cannot be erased', L[1] === 'a=1', JSON.stringify(L));
+  chk('and erased', L[1] === 'a=1', JSON.stringify(L));
+  chk('no workspace is dimmed when none was timed',
+      0 === await priya.evaluate(() => document.querySelectorAll('#viewBoard .workspace.frozen').length));
   await priya.evaluate(() => window.__chalkline.focusTo(3));
-  await priya.keyboard.press('End');            // backspace deletes to the LEFT
+  await priya.keyboard.press('End');
   for(let i = 0; i < 4; i++) await priya.keyboard.press('Backspace');
   L = await raw(priya);
   chk('backspace empties the workspace but keeps its first line',
@@ -97,8 +99,8 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
     firstNo: (w.querySelector('.brow:not(.part) .gutter b') || {}).textContent })));
   chk('one panel per workspace, headed Problem #N',
       panels.length === 3 && panels[1].head === 'Problem #1' && panels[2].head === 'Problem #2', JSON.stringify(panels.map(p => p.head)));
-  chk('the panel in use is bright and the rest are dimmed',
-      /active/.test(panels[2].cls) && /frozen/.test(panels[0].cls) && /frozen/.test(panels[1].cls), JSON.stringify(panels.map(p => p.cls)));
+  chk('the panel the caret is in is bright; untimed ones stay open',
+      /active/.test(panels[2].cls) && /open/.test(panels[0].cls) && /open/.test(panels[1].cls) && !/frozen/.test(panels[0].cls + panels[1].cls), JSON.stringify(panels.map(p => p.cls)));
   chk('each panel shows its own problem on the right',
       /x\+?1|x.*1/.test(panels[1].problem) && /2/.test(panels[2].problem) && panels[0].problem === '', JSON.stringify(panels.map(p => p.problem.slice(0, 20))));
   chk('line numbers restart inside each panel', panels[2].firstNo === '1' && panels[1].firstNo === '1', JSON.stringify(panels.map(p => p.firstNo)));
@@ -161,7 +163,7 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   // ---- clear board clears only the workspace in use -------------------------
   await priya.click('#clearAll');
   L = await raw(priya);
-  chk('clear board keeps the frozen workspaces',
+  chk('clear board clears only the workspace the caret is in',
       L.length === 6 && L[3] === 'y=2' && L[5] === '', JSON.stringify(L));
 
   // ---- headings survive a round trip, and are not maths ---------------------
@@ -228,10 +230,57 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   await push('x+2');
   L = await raw(priya);
   chk('pushing the same problem again opens another workspace', L[L.length - 2] === P('Problem #3') && L[L.length - 1] === '', JSON.stringify(L.slice(-2)));
-  await priya.waitForTimeout(900);                       // the smooth scroll
-  const view = await priya.evaluate(() => { const w = document.querySelector('#viewBoard .workspace.active');
-    const r = w.getBoundingClientRect(); return {top: Math.round(r.top), vh: window.innerHeight}; });
-  chk('the student is scrolled to the newest problem', view.top >= 0 && view.top < 200, JSON.stringify(view));
+
+  // ---- timers and click-back (v40) -----------------------------------------
+  // Ryan: "click-back editing is good if no timer was turned on". While a
+  // timer is on, the timed workspace is the only open one; when it runs out,
+  // pencils down everywhere; with no timer on, untimed workspaces reopen.
+  await priya.evaluate(() => window.__chalkline.timer(30, 777000));   // a running timer on Problem #3
+  await priya.waitForTimeout(150);
+  L = await raw(priya);
+  chk('a running timer marks the newest workspace as timed', /"timed":true/.test(L[L.length - 2]), L[L.length - 2]);
+  chk('while a timer is on, every other workspace is shut',
+      await priya.evaluate(() => { const ws = [...document.querySelectorAll('#viewBoard .workspace')];
+        return ws.slice(0, -1).every(w => w.classList.contains('frozen')) && !ws[ws.length - 1].classList.contains('frozen'); }));
+  await priya.focus('#hidden'); await priya.keyboard.type('t=1');
+  await priya.evaluate(() => window.__chalkline.focusTo(3));   // try Problem #1 during the timer
+  await priya.keyboard.type('!');
+  L = await raw(priya);
+  chk('an untimed workspace cannot be written in while a timer is on', L[3] === 'y=2', JSON.stringify(L[3]));
+  await push('x+4');                                             // the next problem, untimed
+  L = await raw(priya);
+  const p3 = L.findIndex(t => /Problem #3/.test(t)), p4 = L.findIndex(t => /Problem #4/.test(t));
+  chk('the next problem opened Problem #4', p4 > p3 && p3 > 0, JSON.stringify(L.slice(p3)));
+  await priya.evaluate((i) => window.__chalkline.focusTo(i), p3 + 1);
+  await priya.keyboard.type('9');
+  L = await raw(priya);
+  chk('the timed workspace stays shut once the next problem arrives', L[p3 + 1] === 't=1', JSON.stringify(L[p3 + 1]));
+  chk('and it is the only one dimmed',
+      1 === await priya.evaluate(() => document.querySelectorAll('#viewBoard .workspace.frozen').length));
+  await priya.evaluate(() => window.__chalkline.focusTo(3));   // Problem #1 was never timed
+  await priya.keyboard.type('!');
+  L = await raw(priya);
+  chk('with no timer on, an untimed workspace reopens', /!/.test(L[3]), JSON.stringify(L[3]));
+  // a timer on Problem #4 runs out: pencils down everywhere. Expiry comes
+  // from the clock ticking, never from a second message about the same
+  // timer — the app rightly ignores a timer it has already heard.
+  await priya.evaluate(() => window.__chalkline.timer(1, 888000));
+  await priya.waitForTimeout(1900);
+  chk('time up shows the lock bar', await priya.evaluate(() => !document.getElementById('lockBar').hidden));
+  await priya.evaluate((i) => window.__chalkline.focusTo(i), p4 + 1);
+  await priya.keyboard.type('9');
+  L = await raw(priya);
+  chk('the expired workspace cannot be written in', L[p4 + 1] === '', JSON.stringify(L[p4 + 1]));
+  await priya.evaluate(() => window.__chalkline.focusTo(3));
+  await priya.keyboard.type('?');
+  L = await raw(priya);
+  chk('nor can any other while time is up', !/\?/.test(L[3]), JSON.stringify(L[3]));
+  await push('x+5');                                             // the next problem lifts the lock
+  L = await raw(priya);
+  await priya.evaluate(() => window.__chalkline.focusTo(3));
+  await priya.keyboard.type('?');
+  L = await raw(priya);
+  chk('the next problem lifts the lock and untimed workspaces reopen', /\?/.test(L[3]), JSON.stringify(L[3]));
 
   console.log(`\nworkspaces: ${pass} passed, ${fail} failed`);
   console.log('errors:', errs.length ? errs : 'none');

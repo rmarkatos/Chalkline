@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v39` at the time of writing). **Bump it in
+There is a version chip on screen (`v40` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~660 assertions plus 500 generated round-trips.
+23 suites, ~670 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -183,6 +183,12 @@ builds a copy with settings pointing at nowhere and asserts the script reaches
 the end. It exists because `accountsReady` was declared in section 9 while
 `boot()` runs long before section 9 — the fifth time that trap has bitten, and
 the first time it reached the live site.
+
+**A suite that prints nothing did not run.** Splicing a new block onto a
+test file cut off its ending (summary, browser close, helper) and the file
+no longer parsed — three runs printed no summary and no FAIL, which is not
+"green". `node --check <suite>` after editing one, and treat an empty
+result as red. The runner already refuses to call a crashed suite green.
 
 **A break-on-purpose that crashes the suite proves nothing.** Disabling the
 pop-out to prove its check made the very next step throw on a missing
@@ -308,6 +314,26 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 (`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**v40 — click-back editing, governed by the timer.** Ryan: "click-back
+editing is good if no timer was turned on." As built (`isFrozen`):
+- **a timer is on** (the newest heading has `timed:true`): that workspace is
+  the only open one; **time up** (`locked`) shuts everything until the next
+  problem arrives (`setLocked` locks board and palette, as before v40);
+- **no timer on**: a student may go back into any earlier workspace that was
+  never timed; one that *was* timed stays shut for good.
+A workspace learns it was timed from `markTimed()` in `startTimer` — on a
+running timer, and on an expired one a late joiner receives — and carries
+it in its heading string (`%%P {"label":…,"timed":true}`), so it survives
+sync and reload. `isLocked()` now means "the caret's own workspace is
+frozen"; `clearActive`, the backspace/ArrowUp guards and `removeLine` follow
+the caret's section (`sectionOf`, `sectionEnd`, `lastPart`), not the last
+one. The bright `.workspace.active` is the panel the caret is in; `.open`
+panels are editable. **`let locked` is hoisted** with the other start-up
+state: `isFrozen()` reads it inside the very first `render()` — the sixth
+time the declaration trap has bitten, caught by `test-boot`. If Ryan wants
+the looser reading (untimed panels open even while a timer runs), change
+the `timerOn` branch only.
 
 **v39 — the maths panel collapses to a rail; shortcuts and LaTeX moved.**
 Two sizes, remembered per device in `localStorage` `chalkline.palette`

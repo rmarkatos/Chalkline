@@ -507,6 +507,7 @@ button{font:inherit;color:inherit}
   background:var(--surface); overflow:hidden; scroll-margin-top:110px}  /* clear of the sticky bar and strip */
 .workspace.active{border-color:var(--accent)}
 .workspace.frozen{opacity:.5}
+.workspace.open:not(.active){opacity:.85}     /* still editable — click into it */
 .workspace.fresh{animation:wsfresh 1.8s ease-out}
 @keyframes wsfresh{0%{box-shadow:0 0 0 4px var(--accent-soft)} 100%{box-shadow:0 0 0 0 transparent}}
 .wshead{display:flex; align-items:center; gap:8px; padding:10px 14px 0; font-size:11px;
@@ -853,7 +854,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v39</span></p>
+      <span class="ver">v40</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -894,7 +895,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v39</span></p>
+      <span class="ver">v40</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -930,7 +931,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v39</span>
+      <span class="ver">v40</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -970,7 +971,7 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v39</span>
+    <span class="ver">v40</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -1091,6 +1092,11 @@ const CLASS_NAMES = {};
 let accountsReady = null;
 let waitChannel = null;
 let waitPoll = null, splashPoll = null;
+/* "time is up in the newest workspace". Lived beside the timer code until
+   v40, when isFrozen() started reading it — and isFrozen() runs inside the
+   very first render(), long before that code is reached. Sixth time this
+   trap has bitten; test-boot.js is what caught it. */
+let locked = false;
 let connState = "connecting", teacherHere = false, teacherHereName = "";
 /* One key per problem item, in order — the same recipe stripKey() uses for
    the whole strip, so "changed" and "which one changed" cannot disagree. */
@@ -2366,7 +2372,7 @@ function backspace(){
       if(list.length === 0 && lines.length > 1){
         // the first line of a workspace stays: deleting it would put the
         // caret on the heading, or in the frozen section above
-        if(focusLine === activeStart() && activeStart() > 0) return;
+        if(focusLine === sectionStart(focusLine) && sectionOf(focusLine) >= 0) return;
         removeLine(focusLine); return;
       }
       if(prev.kind === "math"){ focusLine--; cur = {list:prev.root, i:prev.root.length}; }
@@ -2404,9 +2410,11 @@ function removeLine(idx){
   if(lines.length === 1){ resetBoard(); render(); hidden.focus(); return; }
   lines.splice(idx,1);
   focusLine = Math.max(0, Math.min(idx-1, lines.length-1));
-  if(focusLine < activeStart()) focusLine = Math.min(activeStart(), lines.length - 1);
-  if(!lines[focusLine] || lines[focusLine].kind === "part"){
-    const nl = newMathLine(); lines.push(nl); focusLine = lines.length - 1;
+  if(!lines[focusLine] || lines[focusLine].kind === "part" || isFrozen(focusLine)){
+    // the caret may not rest on a heading or in a frozen workspace: put it
+    // back at the end of the workspace that just lost a line
+    const sec = sectionOf(idx), e = sectionEnd(sec < 0 ? -1 : sec);
+    const nl = newMathLine(); lines.splice(e, 0, nl); focusLine = e;
   }
   const ln = lines[focusLine];
   if(ln.kind === "math"){ cur = {list:ln.root, i:ln.root.length}; sel=null; render(); hidden.focus(); }
@@ -2465,7 +2473,7 @@ hidden.addEventListener("keydown", e => {
   if(k === "ArrowLeft"){  e.preventDefault(); if(e.shiftKey) extendSel(-1); else { sel=null; moveLeft(); syncMode(); } render(); return; }
   if(k === "ArrowUp"){    e.preventDefault(); sel=null;
     // up from the first line of a workspace stops there: above is frozen
-    if(!(focusLine <= activeStart() && cur.list === curLine().root)) moveVert(-1);
+    if(!(focusLine === sectionStart(focusLine) && cur.list === curLine().root)) moveVert(-1);
     syncMode(); render(); return; }
   if(k === "ArrowDown"){  e.preventDefault(); sel=null; moveVert(1); syncMode(); render(); return; }
   if(k === "Home"){ e.preventDefault(); cur={list:cur.list,i:0}; sel=null; syncMode(); render(); return; }
@@ -4006,7 +4014,9 @@ function newPartLine(label){ return {id:newId(), kind:"part", p:{label:String(la
 function partToText(pl){ return "%%P " + JSON.stringify(pl.p); }
 function partFromText(t){
   try{ const p = JSON.parse(t.slice(4));
-       return {id:newId(), kind:"part", p:{label:String((p && p.label) || "")}}; }
+       const out = {id:newId(), kind:"part", p:{label:String((p && p.label) || "")}};
+       if(p && p.timed) out.p.timed = true;      // this problem came with a timer
+       return out; }
   catch(e){ return null; }
 }
 const isPartText = t => typeof t === "string" && t.slice(0, 4) === "%%P ";
@@ -4014,7 +4024,27 @@ function activeStart(){
   for(let i = lines.length - 1; i >= 0; i--) if(lines[i].kind === "part") return i + 1;
   return 0;
 }
-function isFrozen(idx){ return idx < activeStart(); }
+/* Which heading a line belongs to (-1 = before any heading), and the last one. */
+function sectionOf(idx){ for(let i = Math.min(idx, lines.length - 1); i >= 0; i--) if(lines[i].kind === "part") return i; return -1; }
+function lastPart(){ for(let i = lines.length - 1; i >= 0; i--) if(lines[i].kind === "part") return i; return -1; }
+function sectionEnd(idx){ for(let i = idx + 1; i < lines.length; i++) if(lines[i].kind === "part") return i; return lines.length; }
+/* Ryan's rule (v40): "click-back editing is good if no timer was turned
+   on". So:
+     - while a timer is on (the newest problem came with one), that
+       workspace is the only open one; when its time runs out, pencils down
+       everywhere until the next problem arrives;
+     - with no timer on, a student may go back into any earlier workspace
+       that was never timed; one that was timed stays shut for good.
+   `locked` is "the newest workspace's time is up". A board with no
+   headings keeps the old behaviour: time up locks the whole board. */
+function isFrozen(idx){
+  const sec = sectionOf(idx), lp = lastPart();
+  if(lp < 0) return locked;                               // no workspaces at all
+  const timerOn = !!lines[lp].p.timed;
+  if(timerOn) return sec !== lp || locked;                // the timed one, until time is up
+  if(sec < 0) return false;                               // work before any heading
+  return !!lines[sec].p.timed;                            // a finished timed problem stays shut
+}
 /* The headings on a board, in order, from its lines-as-strings. */
 function headingLabels(arr){
   return asLines(arr).filter(isPartText).map(t => { const pl = partFromText(t); return pl ? pl.p.label : ""; });
@@ -4065,13 +4095,13 @@ function openWorkspace(label){
 function groupIntoPanels(){
   if(!lines.some(l => l.kind === "part")) return;
   const rows = boardRows();
-  const start = activeStart();
   const frag = document.createDocumentFragment();
   let panel = null, box = null;
   const open = (label, firstIdx) => {
     panel = document.createElement("section");
-    const active = firstIdx >= start - 1;
-    panel.className = "workspace " + (active ? "active" : "frozen");
+    const here = sectionOf(focusLine) === sectionOf(firstIdx);
+    const frozen = isFrozen(firstIdx);
+    panel.className = "workspace " + (here ? "active " : "") + (frozen ? "frozen" : "open");
     const head = document.createElement("div"); head.className = "wshead";
     const t = document.createElement("span"); t.textContent = label || "Problem";
     head.appendChild(t);
@@ -4101,10 +4131,10 @@ function groupIntoPanels(){
 
 /* Clear board clears the workspace the student is in, not the frozen ones. */
 function clearActive(){
-  const s = activeStart();
-  if(s === 0){ resetBoard(); return; }
-  lines.length = s;
-  const ln = newMathLine(); lines.push(ln);
+  if(lastPart() < 0){ resetBoard(); return; }
+  const s = sectionStart(focusLine), e = sectionEnd(sectionOf(focusLine));
+  const ln = newMathLine();
+  lines.splice(s, e - s, ln);
   focusLine = s; cur = {list:ln.root, i:0}; sel = null; pending = null; textMode = false;
   relink();
 }
@@ -5830,14 +5860,15 @@ function fileToImages(file, cb){
 let timerEnd = 0, timerTick = null;
 /* When the clock runs out a student can add nothing more, but everything they
    have written stays on screen until the teacher closes the board. */
-let locked = false;
-function isLocked(){ return locked; }
+function isLocked(){ return isFrozen(focusLine); }   // the caret's own workspace
 function setLocked(on){
   if(locked === on) return;
   locked = on;
   document.getElementById("lockBar").hidden = !on;
+  // time is up: pencils down everywhere until the next problem arrives
   boardEl.classList.toggle("locked", on);
   paletteEl.classList.toggle("locked", on);
+  render();                                // panels re-dim to match
   if(!on) refocusEditor();
 }
 function fmt(ms){
@@ -5868,6 +5899,13 @@ function paintClock(){
   if(bar && !bar.hidden) refreshComposerClock();
 }
 let timerId = null;                  // which timer we are counting; null = none
+function markTimed(){
+  if(role !== "student") return;
+  const lp = lastPart(); if(lp < 0 || lines[lp].p.timed) return;
+  lines[lp].p.timed = true;            // travels in the heading string, so it survives sync and reload
+  render();
+  if(typeof schedulePublish === "function") schedulePublish();
+}
 function startTimer(seconds, endsAt){
   /* The sync layer re-reads its state every few seconds and announces the
      timer each time. The same timer heard again is not a new one — and a
@@ -5878,6 +5916,7 @@ function startTimer(seconds, endsAt){
   if(!seconds){
     if(endsAt != null){
       // a timer that has already run out: time is up, and it stays up
+      markTimed();
       timerEnd = Date.now() - 1; paintClock(); return;
     }
     // no timer at all — and nothing to do if there was none already
@@ -5885,6 +5924,7 @@ function startTimer(seconds, endsAt){
     setLocked(false); timerEnd = 0; paintClock(); return;
   }
   setLocked(false);
+  markTimed();
   /* each client counts down from when it hears about it, so nothing depends on
      the clocks agreeing — over a network that matters more than it does here */
   timerEnd = Date.now() + seconds * 1000;
