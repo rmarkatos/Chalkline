@@ -187,15 +187,37 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   chk('a long line never scrolls sideways', wrapInfo.bodyScroll <= wrapInfo.bodyClient + 1, JSON.stringify(wrapInfo));
   chk('a long line wraps onto more lines', wrapInfo.fieldH > 55, JSON.stringify(wrapInfo));
   chk('the button panel is sticky', await priya.evaluate(() => getComputedStyle(document.getElementById('palette')).position === 'sticky'));
-  await priya.click('#paletteBtn'); await priya.waitForTimeout(100);
-  const hid = await priya.evaluate(() => ({ palette: getComputedStyle(document.getElementById('palette')).display,
-                                             cls: document.querySelector('#viewBoard .wrap').className,
-                                             saved: (() => { try { return localStorage.getItem('chalkline.palette'); } catch (e) { return null; } })(),
-                                             btn: document.getElementById('paletteBtn').textContent }));
-  chk('Hide maths puts the button panel away and remembers it',
-      hid.palette === 'none' && /nopalette/.test(hid.cls) && hid.saved === 'hidden' && hid.btn === 'Show maths', JSON.stringify(hid));
-  await priya.click('#paletteBtn'); await priya.waitForTimeout(100);
-  chk('Show maths brings it back', await priya.evaluate(() => getComputedStyle(document.getElementById('palette')).display !== 'none'));
+  chk('there is no Hide/Show maths in the top bar', await priya.evaluate(() => !document.getElementById('paletteBtn')));
+  chk('the typing shortcuts live in the panel and stay put',
+      await priya.evaluate(() => { const k = document.querySelector('#palette #keys'); return !!k && getComputedStyle(k.closest('.ptop')).position === 'sticky'; }));
+  await priya.click('#paletteHide'); await priya.waitForTimeout(150);
+  const mini = await priya.evaluate(() => ({ cls: document.querySelector('#viewBoard .wrap').className,
+    width: Math.round(document.getElementById('palette').getBoundingClientRect().width),
+    icons: document.querySelectorAll('#prail .prail-btn').length,
+    keys: getComputedStyle(document.getElementById('keys')).display,
+    saved: (() => { try { return localStorage.getItem('chalkline.palette'); } catch (e) { return null; } })() }));
+  chk('Collapse turns the panel into a rail of one icon per section',
+      /mini/.test(mini.cls) && mini.width < 100 && mini.icons === 6 && mini.keys === 'none' && mini.saved === 'mini', JSON.stringify(mini));
+  await priya.evaluate(() => document.querySelector('#prail .prail-btn').dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true})));
+  await priya.waitForTimeout(150);
+  const pop = await priya.evaluate(() => { const p = document.getElementById('ppop'); const r = p.getBoundingClientRect();
+    const rail = document.querySelector('#prail .prail-btn').getBoundingClientRect();
+    return {hidden: p.hidden, btns: p.querySelectorAll('.pbtn').length, title: p.querySelector('.lbl').textContent, besideRail: r.left > rail.right}; });
+  chk('a rail icon opens a pop-out beside it with the section\'s symbols',
+      !pop.hidden && pop.btns > 0 && pop.title === 'Templates' && pop.besideRail, JSON.stringify(pop));
+  const before = await priya.evaluate(() => window.__chalkline.tex());
+  await priya.evaluate(() => { const b = document.querySelector('#ppop .pbtn'); if(b) b.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true})); });
+  await priya.waitForTimeout(150);
+  chk('a symbol from the pop-out lands on the line',
+      (await priya.evaluate(() => window.__chalkline.tex())) !== before && /frac/.test(await priya.evaluate(() => window.__chalkline.tex())));
+  await priya.keyboard.press('Escape'); await priya.waitForTimeout(100);
+  chk('Escape closes the pop-out and returns the symbols to their section',
+      await priya.evaluate(() => document.getElementById('ppop').hidden && document.querySelectorAll('#palette .pgroup .pgrid').length === 6));
+  await priya.click('#paletteExpand'); await priya.waitForTimeout(150);
+  chk('Expand brings the full panel back',
+      await priya.evaluate(() => !/mini/.test(document.querySelector('#viewBoard .wrap').className) && getComputedStyle(document.getElementById('keys')).display !== 'none'));
+  const foot = await priya.evaluate(() => { const el = document.querySelector('.inspector'); const cs = getComputedStyle(el); return {pos: cs.position, h: Math.round(el.getBoundingClientRect().height), bottom: Math.round(window.innerHeight - el.getBoundingClientRect().bottom)}; });
+  chk('the LaTeX line is a slim fixed footer', foot.pos === 'fixed' && foot.h < 70 && foot.bottom === 0, JSON.stringify(foot));
   const glow = await priya.evaluate(() => { for (const ss of document.styleSheets) { try { for (const r of ss.cssRules) if (r.selectorText === '.workspace.fresh') return r.style.animationName; } catch (e) {} } return null; });
   chk('a new panel gets a quiet outline, not a background flash', glow === 'wsfresh', JSON.stringify(glow));
 

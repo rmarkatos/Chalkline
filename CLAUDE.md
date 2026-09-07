@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v38` at the time of writing). **Bump it in
+There is a version chip on screen (`v39` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~650 assertions plus 500 generated round-trips.
+23 suites, ~660 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -183,6 +183,13 @@ builds a copy with settings pointing at nowhere and asserts the script reaches
 the end. It exists because `accountsReady` was declared in section 9 while
 `boot()` runs long before section 9 — the fifth time that trap has bitten, and
 the first time it reached the live site.
+
+**A break-on-purpose that crashes the suite proves nothing.** Disabling the
+pop-out to prove its check made the very next step throw on a missing
+button, so the run died before the *footer* check it was also meant to
+prove — and the summary line never printed. Guard the steps after a check
+(`if(b) …`) so a broken rule fails *one* check cleanly, and read the
+summary line, not just the FAIL lines.
 
 **A test that cannot fail is not a test.** When you fix a bug, first make the
 test fail against the old behaviour, then fix it. `test-tabs.js` passed *before*
@@ -301,6 +308,25 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 (`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**v39 — the maths panel collapses to a rail; shortcuts and LaTeX moved.**
+Two sizes, remembered per device in `localStorage` `chalkline.palette`
+(`full` | `mini`; the old `hidden` reads as `mini`). `#paletteHide`
+collapses, `#paletteExpand` (shown only in mini) expands; the top-bar
+Hide/Show button is gone. **Mini** is `.wrap.mini` (64px column) with a rail
+`#prail` of one `.prail-btn` per section — each icon is a clone of its
+section's first button face. Clicking an icon calls `togglePop(si, btn)`,
+which **borrows the section's real `.pgrid`** into the fixed `#ppop` beside
+the icon (so every button keeps its listeners) and gives it back on close
+(`closePop`: outside mousedown, Escape, same icon, or expanding).
+`paletteGroups[si] = {title, group, grid}` is the map. The panel's top
+(`.ptop`: collapse/expand + the typing shortcuts `#keys`) is `position:sticky`
+inside the panel's own scroll; shortcuts show only in full. The LaTeX line
+(`.inspector`) is a slim `position:fixed` footer — which took ~150px out of
+the page's flow, so `.boardwrap` `padding-bottom` is 80vh now: the newest
+panel is the end of the page and can only be scrolled as high as the page
+is long. `test-workspaces` covers rail, pop-out, symbol insertion from the
+pop-out, Escape, expand, sticky shortcuts and the footer.
 
 **v38 — the strip is gone, notes sit under the line, the caret shows.**
 The problem strip across the top (`#probStrip`) is `display:none` for good:

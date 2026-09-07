@@ -114,7 +114,7 @@ button{font:inherit;color:inherit}
 @media (max-width:900px){ .wrap{grid-template-columns:minmax(0,1fr)} }
 
 .stage{display:flex; flex-direction:column; min-width:0}
-.boardwrap{flex:1; padding:22px 20px 55vh; min-width:0}   /* room to scroll the newest panel to the top */
+.boardwrap{flex:1; padding:22px 20px 80vh; min-width:0}   /* room to scroll the newest panel to the top, under a fixed footer */
 .board.armed{border-color:var(--accent)}
 .board{
   background:var(--surface); border:1px solid var(--line); border-radius:10px;
@@ -288,10 +288,16 @@ button{font:inherit;color:inherit}
   display:block; margin-bottom:5px;
 }
 .tex{
-  font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-size:12.5px;
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-size:11.5px;
   background:var(--surface-2); border:1px solid var(--line-soft); border-radius:6px;
-  padding:9px 11px; color:var(--ink-2); overflow-x:auto; white-space:pre; min-height:36px;
+  padding:5px 9px; color:var(--ink-2); overflow-x:auto; white-space:pre; min-height:26px; flex:1; min-width:0;
 }
+/* the LaTeX line is a slim footer that stays put */
+.inspector{position:fixed; left:0; right:0; bottom:0; z-index:25; background:var(--surface);
+  border-top:1px solid var(--line); padding:6px 20px}
+.insp-l{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.insp-l>.lbl{margin:0; white-space:nowrap}
+.insp-l .hint{flex-basis:100%; margin-top:2px}
 .mode{
   display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.09em;
   padding:2px 7px; border-radius:10px; margin-left:8px; vertical-align:1px;
@@ -316,10 +322,34 @@ button{font:inherit;color:inherit}
   position:sticky; top:53px; align-self:start;   /* stays put under the top bar */
 }
 /* the maths buttons can be put away; the board takes the whole width */
-.phead{display:flex; justify-content:flex-end; margin:-4px 0 10px}
+/* the top of the maths panel stays put as the panel scrolls */
+.ptop{position:sticky; top:0; z-index:2; background:var(--surface); margin:-16px -16px 12px; padding:10px 16px 8px;
+  border-bottom:1px solid var(--line-soft)}
+.phead{display:flex; justify-content:flex-end; margin:0 0 8px}
 .phead .btn{font-size:12px; padding:4px 9px}
-.wrap.nopalette{grid-template-columns:minmax(0,1fr)}
-.wrap.nopalette .palette{display:none}
+#paletteExpand{display:none}
+.keys{font-size:12px; color:var(--ink-2)}
+.keys>div{display:flex; gap:8px; align-items:baseline; margin:3px 0}
+.keys kbd{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-size:11px; border:1px solid var(--line);
+  border-radius:4px; padding:1px 5px; background:var(--surface-2); flex:none}
+/* collapsed: a rail of one icon per section */
+.prail{display:none}
+.prail-btn{width:44px; height:44px; border:1px solid var(--line); border-radius:9px; background:var(--surface);
+  color:var(--ink); cursor:pointer; display:grid; place-items:center; padding:0; overflow:hidden}
+.prail-btn .face{font-size:17px; pointer-events:none}
+.prail-btn:hover{border-color:var(--accent); background:var(--accent-soft)}
+.wrap.mini{grid-template-columns:64px minmax(0,1fr)}
+.wrap.mini .palette{padding:10px 10px 40px}
+.wrap.mini .ptop{margin:-10px -10px 10px; padding:6px 10px 6px}
+.wrap.mini .phead{justify-content:center; margin:0}
+.wrap.mini #paletteHide, .wrap.mini .keys{display:none}
+.wrap.mini #paletteExpand{display:inline-block}
+.wrap.mini .prail{display:flex; flex-direction:column; gap:6px; align-items:center}
+.wrap.mini .pgroup{display:none}
+/* the pop-out beside a rail icon holds that section's real buttons */
+.ppop{position:fixed; z-index:40; width:300px; max-height:70vh; overflow:auto; background:var(--surface);
+  border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); padding:12px 14px 14px}
+.ppop .lbl{margin-bottom:8px}
 /* stacked on a narrow screen, the board comes first and the buttons below */
 @media (max-width:900px){
   .palette{order:0; border-right:none; border-top:1px solid var(--line); max-height:none}
@@ -827,7 +857,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v38</span></p>
+      <span class="ver">v39</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -868,7 +898,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v38</span></p>
+      <span class="ver">v39</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -904,7 +934,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v38</span>
+      <span class="ver">v39</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -944,10 +974,9 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v38</span>
+    <span class="ver">v39</span>
   </div>
   <div class="barbtns">
-    <button class="btn" id="paletteBtn">Hide maths</button>
     <button class="btn" id="themeBtn">Theme</button>
     <button class="btn" id="addNote">Add text line</button>
     <button class="btn" id="addGraph">Add a graph</button>
@@ -1007,23 +1036,19 @@ button{font:inherit;color:inherit}
   <div class="tick" id="tickBadge" hidden><span>&#10003;</span></div>
     <div class="inspector">
       <div class="insp-l">
-        <span class="lbl">LaTeX for the focused line &mdash; what gets stored &amp; synced<span class="mode" id="modeChip">math</span></span>
+        <span class="lbl">LaTeX<span class="mode" id="modeChip">math</span></span>
         <div class="tex" id="texOut"></div>
         <div class="hint" id="texWarn"></div>
-      </div>
-      <div class="keys">
-        <span class="lbl">Typing shortcuts</span>
-        <div><kbd>$</kbd><span>switch between words and maths, mid&#8209;line</span></div>
-        <div><kbd>/</kbd><span>inserts a fraction</span></div>
-        <div><kbd>^</kbd><span>exponent</span></div>
-        <div><kbd>_</kbd><span>subscript</span></div>
-        <div><kbd>&larr;&nbsp;&rarr;</kbd><span>move left and right through your work</span></div>
-        <div><kbd>space</kbd><span>a space &mdash; and it finishes a \\command you have typed</span></div>
       </div>
     </div>
   </div>
 
   <div class="palette" id="palette"></div>
+</div>
+
+<div class="ppop" id="ppop" hidden>
+  <span class="lbl"></span>
+  <div class="ppop-body"></div>
 </div>
 
 <div class="modal" id="importPanel" hidden>
@@ -2707,19 +2732,39 @@ const paletteEl = document.getElementById("palette");
 paletteEl.addEventListener("scroll", hideTip);
 window.addEventListener("scroll", hideTip, true);
 function buildPalette(){
-{ // a way to put the panel away from the panel itself, not only the top bar
+  /* The top of the panel stays put as it scrolls: the collapse/expand
+     control, and — in the full view only — the typing shortcuts. */
+  const top = document.createElement("div"); top.className = "ptop";
   const hd = document.createElement("div"); hd.className = "phead";
   const hb = document.createElement("button"); hb.type = "button"; hb.className = "btn"; hb.id = "paletteHide";
-  hb.textContent = "\u2039 Hide maths"; hb.title = "Put the maths buttons away";
-  hb.addEventListener("click", () => { setPalette(false); refocusEditor(); });
-  hd.appendChild(hb); paletteEl.appendChild(hd);
-}
-PALETTE.forEach(([title, cols, items]) => {
-  const g = document.createElement("div"); g.className = "pgroup";
+  hb.textContent = "\u2039 Collapse"; hb.title = "Collapse to a rail of icons";
+  hb.addEventListener("click", () => { setPaletteMode("mini"); refocusEditor(); });
+  const xb = document.createElement("button"); xb.type = "button"; xb.className = "btn"; xb.id = "paletteExpand";
+  xb.textContent = "\u203a"; xb.title = "Expand the maths panel";
+  xb.addEventListener("click", () => { setPaletteMode("full"); refocusEditor(); });
+  hd.append(hb, xb); top.appendChild(hd);
+  const keys = document.createElement("div"); keys.className = "keys"; keys.id = "keys";
+  keys.innerHTML = '<span class="lbl">Typing shortcuts</span>'
+    + '<div><kbd>$</kbd><span>switch between words and maths, mid&#8209;line</span></div>'
+    + '<div><kbd>/</kbd><span>inserts a fraction</span></div>'
+    + '<div><kbd>^</kbd><span>exponent</span></div>'
+    + '<div><kbd>_</kbd><span>subscript</span></div>'
+    + '<div><kbd>&larr;&nbsp;&rarr;</kbd><span>move left and right through your work</span></div>'
+    + '<div><kbd>space</kbd><span>a space &mdash; and it finishes a \\command you have typed</span></div>';
+  top.appendChild(keys);
+  paletteEl.appendChild(top);
+  /* The rail: one icon per section, shown when the panel is collapsed. Each
+     icon is the face of its section's first button, so the rail reads like
+     the sections it stands for. */
+  const rail = document.createElement("div"); rail.className = "prail"; rail.id = "prail";
+  paletteEl.appendChild(rail);
+PALETTE.forEach(([title, cols, items], si) => {
+  const g = document.createElement("div"); g.className = "pgroup"; g.dataset.section = si;
   const lb = document.createElement("span"); lb.className="lbl"; lb.textContent = title;
   const grid = document.createElement("div"); grid.className = "pgrid";
   grid.style.gridTemplateColumns = "repeat(" + cols + ", minmax(0, 1fr))";
-  items.forEach(it => {
+  paletteGroups[si] = {title, group:g, grid};
+  items.forEach((it, ii) => {
     const b = document.createElement("button");
     b.className = "pbtn" + (it.sub ? " two" : "");
     b.type = "button";
@@ -2741,6 +2786,14 @@ PALETTE.forEach(([title, cols, items]) => {
     }
     b.dataset.id = it.id;
     b.setAttribute("aria-label", (it.sub ? it.sub + " " : "") + it.id + " — " + it.tex);
+    if(ii === 0){
+      const rb = document.createElement("button"); rb.type = "button";
+      rb.className = "prail-btn"; rb.dataset.section = si; rb.title = title;
+      rb.setAttribute("aria-label", title);
+      rb.appendChild(face.cloneNode(true));
+      rb.addEventListener("mousedown", e => { e.preventDefault(); togglePop(si, rb); });
+      document.getElementById("prail").appendChild(rb);
+    }
 
     b.addEventListener("pointerenter", () => showTip(b, it.tex));
     b.addEventListener("pointerleave", hideTip);
@@ -3226,23 +3279,52 @@ document.getElementById("clearAll").addEventListener("click", () => {
   clearActive(); render(); hidden.focus();
 });
 /* Put the maths buttons away, and remember it on this device. */
-function setPalette(shown){
+/* The maths panel has two sizes: the full panel, or a rail of one icon per
+   section. Remembered on this device. */
+const paletteGroups = {};                 // section index -> {title, group, grid}
+let popOpen = null;                       // section index whose grid is in the pop-out
+function setPaletteMode(mode){
   const wrap = document.querySelector("#viewBoard .wrap");
   if(!wrap) return;
-  wrap.classList.toggle("nopalette", !shown);
-  const b = document.getElementById("paletteBtn");
-  if(b) b.textContent = shown ? "Hide maths" : "Show maths";
-  try{ localStorage.setItem("chalkline.palette", shown ? "shown" : "hidden"); }catch(e){}
+  if(mode !== "mini") closePop();
+  wrap.classList.toggle("mini", mode === "mini");
+  try{ localStorage.setItem("chalkline.palette", mode === "mini" ? "mini" : "full"); }catch(e){}
 }
-function paletteShown(){
-  try{ return localStorage.getItem("chalkline.palette") !== "hidden"; }catch(e){ return true; }
+function paletteMode(){
+  try{ const v = localStorage.getItem("chalkline.palette"); return (v === "mini" || v === "hidden") ? "mini" : "full"; }
+  catch(e){ return "full"; }
 }
-document.getElementById("paletteBtn").addEventListener("click", () => {
-  const wrap = document.querySelector("#viewBoard .wrap");
-  setPalette(!!(wrap && wrap.classList.contains("nopalette")));
-  refocusEditor();
+/* The pop-out borrows the section's real grid — the same buttons, with the
+   same behaviour — and gives it back when it closes. */
+function togglePop(si, at){
+  if(popOpen === si){ closePop(); return; }
+  closePop();
+  const pop = document.getElementById("ppop");
+  const sec = paletteGroups[si]; if(!sec) return;
+  pop.querySelector(".lbl").textContent = sec.title;
+  pop.querySelector(".ppop-body").appendChild(sec.grid);
+  const r = at.getBoundingClientRect();
+  pop.hidden = false;
+  const h = pop.offsetHeight, vh = window.innerHeight;
+  pop.style.left = Math.round(r.right + 8) + "px";
+  pop.style.top  = Math.round(Math.max(8, Math.min(r.top, vh - h - 8))) + "px";
+  popOpen = si;
+}
+function closePop(){
+  if(popOpen === null) return;
+  const sec = paletteGroups[popOpen];
+  const pop = document.getElementById("ppop");
+  if(sec) sec.group.appendChild(sec.grid);
+  pop.hidden = true;
+  popOpen = null;
+}
+document.addEventListener("mousedown", e => {
+  if(popOpen === null) return;
+  if(e.target.closest("#ppop") || e.target.closest("#prail")) return;
+  closePop();
 });
-setPalette(paletteShown());
+document.addEventListener("keydown", e => { if(e.key === "Escape" && popOpen !== null) closePop(); });
+setPaletteMode(paletteMode());
 function toggleTheme(){
   const now = document.documentElement.getAttribute("data-theme");
   const dark = now ? now === "dark"
