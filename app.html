@@ -313,13 +313,13 @@ button{font:inherit;color:inherit}
 /* ---------- palette ---------- */
 .palette{
   order:-1;                       /* the buttons sit to the left of the board */
-  border-right:1px solid var(--line); background:var(--surface); padding:16px 16px 40px;
+  border-right:1px solid var(--line); background:var(--surface); padding:0 16px 40px;
   overflow-y:auto; max-height:calc(100vh - 53px);
   position:sticky; top:53px; align-self:start;   /* stays put under the top bar */
 }
 /* the maths buttons can be put away; the board takes the whole width */
 /* the top of the maths panel stays put as the panel scrolls */
-.ptop{position:sticky; top:0; z-index:2; background:var(--surface); margin:-16px -16px 12px; padding:10px 16px 8px;
+.ptop{position:sticky; top:0; z-index:2; background:var(--surface); margin:0 -16px 12px; padding:10px 16px 8px;
   border-bottom:1px solid var(--line-soft)}
 .phead{display:flex; justify-content:flex-end; margin:0 0 8px}
 .phead .btn{font-size:12px; padding:4px 9px}
@@ -330,13 +330,13 @@ button{font:inherit;color:inherit}
   border-radius:4px; padding:1px 5px; background:var(--surface-2); flex:none}
 /* collapsed: a rail of one icon per section */
 .prail{display:none}
-.prail-btn{width:44px; height:44px; border:1px solid var(--line); border-radius:9px; background:var(--surface);
+.prail-btn{width:48px; height:48px; border:1px solid var(--line); border-radius:9px; background:var(--surface);
   color:var(--ink); cursor:pointer; display:grid; place-items:center; padding:0; overflow:hidden}
-.prail-btn .face{font-size:17px; pointer-events:none}
+.prail-btn .face{font-size:12px; line-height:1; pointer-events:none}   /* a fraction or d/dx fits the box */
 .prail-btn:hover{border-color:var(--accent); background:var(--accent-soft)}
-.wrap.mini{grid-template-columns:64px minmax(0,1fr)}
-.wrap.mini .palette{padding:10px 10px 40px}
-.wrap.mini .ptop{margin:-10px -10px 10px; padding:6px 10px 6px}
+.wrap.mini{grid-template-columns:68px minmax(0,1fr)}
+.wrap.mini .palette{padding:0 10px 40px}
+.wrap.mini .ptop{margin:0 -10px 10px; padding:6px 10px 6px}
 .wrap.mini .phead{justify-content:center; margin:0}
 .wrap.mini #paletteHide, .wrap.mini .keys{display:none}
 .wrap.mini #paletteExpand{display:inline-block}
@@ -756,7 +756,7 @@ button{font:inherit;color:inherit}
   background:var(--surface-2); border-bottom:1px solid var(--line); padding:10px 20px 12px;
 }
 .fbpanel{
-  margin:0 20px 18px; padding:11px 14px 13px;
+  margin:14px 0 18px; padding:11px 14px 13px;
   background:var(--accent-soft); border:1px solid var(--accent); border-radius:10px;
 }
 .fbpanel .plabel{color:var(--accent-ink)}
@@ -854,7 +854,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v40</span></p>
+      <span class="ver">v41</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -895,7 +895,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v40</span></p>
+      <span class="ver">v41</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -931,7 +931,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v40</span>
+      <span class="ver">v41</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -971,7 +971,7 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v40</span>
+    <span class="ver">v41</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -1024,13 +1024,15 @@ button{font:inherit;color:inherit}
     <span class="plabel">What <b id="workWho"></b> has written</span>
     <div class="worklines" id="workLines"></div>
   </div>
-  <div class="boardwrap"><div class="board" id="board"></div></div>
-
-  <div class="fbpanel" id="fbPanel" hidden>
-    <div class="fbhead"><span class="plabel">From your teacher</span></div>
-    <div class="fblines" id="fbLines"></div>
+  <div class="boardwrap"><div class="board" id="board"></div>
+    <!-- inside the board's wrapper, ABOVE the scroll room below it, so it
+         sits right under the last workspace rather than under 80vh of air -->
+    <div class="fbpanel" id="fbPanel" hidden>
+      <div class="fbhead"><span class="plabel">From your teacher</span></div>
+      <div class="fblines" id="fbLines"></div>
+    </div>
+    <div class="tick" id="tickBadge" hidden><span>&#10003;</span></div>
   </div>
-  <div class="tick" id="tickBadge" hidden><span>&#10003;</span></div>
     <div class="inspector">
       <div class="insp-l">
         <span class="lbl">LaTeX<span class="mode" id="modeChip">math</span></span>
@@ -1742,7 +1744,7 @@ function fieldKey(e){
   if(!gField) return false;
   if(gField.note){
     if(e.key === "Enter" || e.key === "Escape"){
-      e.preventDefault(); saveNote(gField.k); gField = null;
+      e.preventDefault(); saveNote(gField.k); leaveNote();
       workStale = false; drawWorkPanel(); schedulePublish(); refocusEditor();
       return true;
     }
@@ -1775,7 +1777,7 @@ function fieldKey(e){
     }
     return true;
   }
-  if(e.key === "Escape"){ e.preventDefault(); gField = null; render(); return true; }
+  if(e.key === "Escape"){ e.preventDefault(); leaveNote(); return true; }
   return false;
 }
 
@@ -2749,14 +2751,14 @@ function buildPalette(){
   hd.append(hb, xb); top.appendChild(hd);
   const keys = document.createElement("div"); keys.className = "keys"; keys.id = "keys";
   keys.innerHTML = '<span class="lbl">Typing shortcuts</span>'
-    + '<div><kbd>$</kbd><span>switch between words and maths, mid&#8209;line</span></div>'
+    + '<div><kbd>shift&nbsp;+&nbsp;4</kbd><span>types <b>$</b> &mdash; switch between words and maths, mid&#8209;line</span></div>'
     + '<div><kbd>/</kbd><span>inserts a fraction</span></div>'
     + '<div><kbd>^</kbd><span>exponent</span></div>'
     + '<div><kbd>_</kbd><span>subscript</span></div>'
     + '<div><kbd>&larr;&nbsp;&rarr;</kbd><span>move left and right through your work</span></div>'
     + '<div><kbd>space</kbd><span>a space &mdash; and it finishes a \\command you have typed</span></div>';
   top.appendChild(keys);
-  paletteEl.appendChild(top);
+  paletteEl.prepend(top);                 // first, and flush with the top: nothing sits above it
   /* The rail: one icon per section, shown when the panel is collapsed. Each
      icon is the face of its section's first button, so the rail reads like
      the sections it stands for. */
@@ -4171,6 +4173,17 @@ function saveNote(lineId){
   const bag = noteMap[editorTarget.boardId] = noteMap[editorTarget.boardId] || {};
   const tex = texList(t);
   if(tex.trim()) bag[lineId] = tex; else delete bag[lineId];
+}
+/* Leaving a note. focusNote() points the caret INTO the note's tree; when
+   the note closes the caret has to come back to a line of the editor, or
+   every keystroke afterwards goes into a note that no longer exists —
+   silently. That is how general feedback typed after Escape vanished. */
+function leaveNote(){
+  gField = null;
+  const ln = lines[focusLine];
+  if(ln && ln.root) cur = {list:ln.root, i:ln.root.length};
+  sel = null; pending = null;
+  relink(); render();
 }
 function focusNote(lineId){
   const t = noteTreeFor(lineId);

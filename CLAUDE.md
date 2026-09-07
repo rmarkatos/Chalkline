@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v40` at the time of writing). **Bump it in
+There is a version chip on screen (`v41` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~670 assertions plus 500 generated round-trips.
+23 suites, ~680 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -314,6 +314,20 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 (`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**v41 — feedback under the last workspace; the panel's top; a real note bug.**
+`#fbPanel` (general feedback, "From your teacher") moved *inside*
+`.boardwrap`, above the 80vh of scroll room, so it sits right under the last
+workspace instead of under a screen of air. The palette's sticky top block
+is `prepend`ed and the palette has no top padding — its negative margin was
+measured at +16px and simply not honoured, so nothing relies on it now.
+Rail icons: 48px boxes, 12px faces (a fraction was 56px tall in a 44px box).
+The first shortcut reads **shift + 4** — the key students press. And a real
+fault found while testing the feedback position: `focusNote()` points the
+caret into the note's tree, and closing the note (Escape, or Enter) only
+dropped `gField` — every keystroke afterwards went into a note that no
+longer existed, silently. `leaveNote()` puts the caret back on the line.
+`test-workspaces` covers all four plus the note→feedback path (66 checks).
 
 **v40 — click-back editing, governed by the timer.** Ryan: "click-back
 editing is good if no timer was turned on." As built (`isFrozen`):

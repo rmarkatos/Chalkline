@@ -145,6 +145,14 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   chk('the student sees the note under the line, not beside it',
       !!noteRect && noteRect.noteTop >= noteRect.fieldBottom - 2, JSON.stringify(noteRect));
   await teacher.keyboard.press('Escape'); await teacher.waitForTimeout(200);
+  // general feedback (the panel's own lines, not a note) sits right under the last workspace
+  await teacher.focus('#hidden'); await teacher.keyboard.type('nice work', {delay:4}); await teacher.waitForTimeout(900);
+  const fbPos = await priya.evaluate(() => {
+    const fb = document.getElementById('fbPanel'); const ws = document.querySelectorAll('#viewBoard .workspace');
+    const last = ws[ws.length - 1]; if(!fb || fb.hidden || !last) return {hidden: !fb || fb.hidden};
+    return {hidden: false, gap: Math.round(fb.getBoundingClientRect().top - last.getBoundingClientRect().bottom)};
+  });
+  chk('general feedback appears right under the last workspace', !fbPos.hidden && fbPos.gap >= -2 && fbPos.gap < 120, JSON.stringify(fbPos));
   await teacher.evaluate(() => document.querySelectorAll('#workLines .line.part .partmark-btn')[1].click());   // Problem 1
   await teacher.waitForTimeout(700);
   let marks = await priya.evaluate(() => window.__chalkline.marks());
@@ -190,6 +198,11 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   chk('a long line wraps onto more lines', wrapInfo.fieldH > 55, JSON.stringify(wrapInfo));
   chk('the button panel is sticky', await priya.evaluate(() => getComputedStyle(document.getElementById('palette')).position === 'sticky'));
   chk('there is no Hide/Show maths in the top bar', await priya.evaluate(() => !document.getElementById('paletteBtn')));
+  chk('the shortcut block is flush with the top of the panel',
+      await priya.evaluate(() => { const pal = document.getElementById('palette'), t = pal.querySelector('.ptop');
+        return Math.abs(t.getBoundingClientRect().top - pal.getBoundingClientRect().top) <= 1; }));
+  chk('the first shortcut names the key students press',
+      await priya.evaluate(() => /shift/i.test(document.querySelector('#keys kbd').textContent)));
   chk('the typing shortcuts live in the panel and stay put',
       await priya.evaluate(() => { const k = document.querySelector('#palette #keys'); return !!k && getComputedStyle(k.closest('.ptop')).position === 'sticky'; }));
   await priya.click('#paletteHide'); await priya.waitForTimeout(150);
@@ -198,6 +211,10 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
     icons: document.querySelectorAll('#prail .prail-btn').length,
     keys: getComputedStyle(document.getElementById('keys')).display,
     saved: (() => { try { return localStorage.getItem('chalkline.palette'); } catch (e) { return null; } })() }));
+  chk('every rail icon fits inside its button',
+      await priya.evaluate(() => Array.from(document.querySelectorAll('#prail .prail-btn')).every(btn => {
+        const b = btn.getBoundingClientRect(), f = btn.querySelector('.face').getBoundingClientRect();
+        return f.height <= b.height + 1 && f.width <= b.width + 1; })));
   chk('Collapse turns the panel into a rail of one icon per section',
       /mini/.test(mini.cls) && mini.width < 100 && mini.icons === 6 && mini.keys === 'none' && mini.saved === 'mini', JSON.stringify(mini));
   await priya.evaluate(() => document.querySelector('#prail .prail-btn').dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true})));
