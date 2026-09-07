@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v41` at the time of writing). **Bump it in
+There is a version chip on screen (`v42` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -314,6 +314,14 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 (`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**v42 — the typing shortcuts.** Six rows, one line each at the panel's
+width (`white-space:nowrap`, terse wording): shift + 4 · words ↔ maths;
+enter · next line; / · fraction; ^ · exponent; _ · subscript; ← → · move
+through your work. The "space finishes a \\command" row is gone — Ryan:
+few students type LaTeX, and those who do will find it. `test-workspaces`
+checks the order, the absence of the space row, and that every row is one
+line tall.
 
 **v41 — feedback under the last workspace; the panel's top; a real note bug.**
 `#fbPanel` (general feedback, "From your teacher") moved *inside*

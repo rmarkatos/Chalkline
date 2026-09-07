@@ -329,7 +329,7 @@ button{font:inherit;color:inherit}
 .phead .btn{font-size:12px; padding:4px 9px}
 #paletteExpand{display:none}
 .keys{font-size:12px; color:var(--ink-2)}
-.keys>div{display:flex; gap:8px; align-items:baseline; margin:3px 0}
+.keys>div{display:flex; gap:8px; align-items:baseline; margin:3px 0; white-space:nowrap}
 .keys kbd{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-size:11px; border:1px solid var(--line);
   border-radius:4px; padding:1px 5px; background:var(--surface-2); flex:none}
 /* collapsed: a rail of one icon per section */
@@ -858,7 +858,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v41</span></p>
+      <span class="ver">v42</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -899,7 +899,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v41</span></p>
+      <span class="ver">v42</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -935,7 +935,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v41</span>
+      <span class="ver">v42</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -975,7 +975,7 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v41</span>
+    <span class="ver">v42</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -2754,13 +2754,14 @@ function buildPalette(){
   xb.addEventListener("click", () => { setPaletteMode("full"); refocusEditor(); });
   hd.append(hb, xb); top.appendChild(hd);
   const keys = document.createElement("div"); keys.className = "keys"; keys.id = "keys";
+  // one line each, at the panel's width: terse on purpose
   keys.innerHTML = '<span class="lbl">Typing shortcuts</span>'
-    + '<div><kbd>shift&nbsp;+&nbsp;4</kbd><span>types <b>$</b> &mdash; switch between words and maths, mid&#8209;line</span></div>'
-    + '<div><kbd>/</kbd><span>inserts a fraction</span></div>'
+    + '<div><kbd>shift&nbsp;+&nbsp;4</kbd><span>words &harr; maths</span></div>'
+    + '<div><kbd>enter</kbd><span>next line</span></div>'
+    + '<div><kbd>/</kbd><span>fraction</span></div>'
     + '<div><kbd>^</kbd><span>exponent</span></div>'
     + '<div><kbd>_</kbd><span>subscript</span></div>'
-    + '<div><kbd>&larr;&nbsp;&rarr;</kbd><span>move left and right through your work</span></div>'
-    + '<div><kbd>space</kbd><span>a space &mdash; and it finishes a \\command you have typed</span></div>';
+    + '<div><kbd>&larr;&nbsp;&rarr;</kbd><span>move through your work</span></div>';
   top.appendChild(keys);
   paletteEl.prepend(top);                 // first, and flush with the top: nothing sits above it
   /* The rail: one icon per section, shown when the panel is collapsed. Each

@@ -203,6 +203,11 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
         return Math.abs(t.getBoundingClientRect().top - pal.getBoundingClientRect().top) <= 1; }));
   chk('the first shortcut names the key students press',
       await priya.evaluate(() => /shift/i.test(document.querySelector('#keys kbd').textContent)));
+  const keys = await priya.evaluate(() => Array.from(document.querySelectorAll('#keys>div')).map(d => ({
+    key: d.querySelector('kbd').textContent.trim(), h: Math.round(d.getBoundingClientRect().height) })));
+  chk('the second shortcut is enter, and there is no space row',
+      keys.length === 6 && keys[1].key === 'enter' && !keys.some(k => /space/i.test(k.key)), JSON.stringify(keys));
+  chk('every shortcut fits on one line', keys.every(k => k.h < 26), JSON.stringify(keys));
   chk('the typing shortcuts live in the panel and stay put',
       await priya.evaluate(() => { const k = document.querySelector('#palette #keys'); return !!k && getComputedStyle(k.closest('.ptop')).position === 'sticky'; }));
   await priya.click('#paletteHide'); await priya.waitForTimeout(150);
