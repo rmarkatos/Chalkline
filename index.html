@@ -525,6 +525,8 @@ button{font:inherit;color:inherit}
   border-bottom:1px solid var(--line-soft); background:var(--surface-2)}
 .wsghead .partmark-btn{margin-left:auto}
 .wsgbody{padding:4px 8px 6px}
+#clerkAuth{min-height:440px; display:flex; justify-content:center; align-items:flex-start}
+#clerkAuth[hidden]{display:none}
 .wslines{padding:6px 0; min-width:0}
 .wsproblem{border-left:1px dashed var(--line); padding:10px 14px; min-width:0; overflow:auto}
 .wsproblem .probitem{width:auto; border-right:0; padding:0}
@@ -865,7 +867,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v44</span></p>
+      <span class="ver">v45</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -906,7 +908,11 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v44</span></p>
+      <span class="ver">v45</span></p>
+
+    <!-- Clerk's sign-in is mounted here, not opened as a modal — a modal
+         vanished the moment you clicked outside it, before you had signed in -->
+    <div id="clerkAuth" hidden></div>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -942,7 +948,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v44</span>
+      <span class="ver">v45</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -982,7 +988,7 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v44</span>
+    <span class="ver">v45</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -1096,6 +1102,7 @@ const SUPA_CONFIG  = window.CHALKLINE_SUPABASE || {};
    behaviour: type a class code, type a name, no sign-in. */
 const USE_ACCOUNTS = !!(CLERK_CONFIG.publishableKey && SUPA_CONFIG.url);
 let clerk = null, supa = null;
+let authMounted = false, authListenerAdded = false;
 let myEnrolments = [], amTeacher = false, pendingList = [];
 const CLASS_NAMES = {};
 /* These two live up here for the reason the comment above says: boot() runs
@@ -6824,9 +6831,39 @@ function watchWaiting(){
 
 /* ---- start-up ---------------------------------------------------------- */
 
+/* Show Clerk's sign-in as a panel that stays put. openSignIn() is a modal
+   that closes on an outside click, which stranded anyone who clicked beside
+   it before signing in. A mounted SignIn cannot be dismissed, and it carries
+   Clerk's full "forgot password -> code -> new password" flow. */
+function showSignInPanel(){
+  showScreen("splash");
+  ["splashPick", "splashWait", "splashLeft"].forEach(id => { const e = document.getElementById(id); if(e) e.hidden = true; });
+  document.getElementById("splashMsg").textContent = "";
+  document.getElementById("splashOut").hidden = true;      // nothing to sign out of yet
+  const box = document.getElementById("clerkAuth");
+  box.hidden = false;
+  if(!authMounted){
+    authMounted = true;
+    try{ clerk.mountSignIn(box); }catch(e){ reportError("showing sign-in", e); }
+  }
+  if(!authListenerAdded){
+    authListenerAdded = true;
+    clerk.addListener(res => {
+      // the moment Clerk has a signed-in user, take down the box and go on
+      if(res && res.user && authMounted){
+        try{ clerk.unmountSignIn(box); }catch(e){}
+        authMounted = false; box.hidden = true;
+        document.getElementById("splashOut").hidden = false;
+        startAccounts();
+      }
+    });
+  }
+}
 async function startAccounts(){
   await ensureAccounts();
-  if(!clerk.user){ clerk.openSignIn({}); return; }
+  if(!clerk.user){ showSignInPanel(); return; }
+  const box = document.getElementById("clerkAuth"); if(box) box.hidden = true;
+  document.getElementById("splashOut").hidden = false;
   await readMe();
   if(amTeacher){ await teacherPickClass(); return; }
   showScreen("splash");

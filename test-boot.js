@@ -110,6 +110,10 @@ const FAKE_CLERK = `window.CHALKLINE_CLERK = {
   const waitPanel = await p.evaluate(() => !!document.getElementById('waitPanel'));
   chk('the approvals panel exists', waitPanel);
 
+  // sign-in mounts into a persistent panel, not a dismissible modal (v45)
+  chk('the sign-in has a persistent container to mount into',
+      await p.evaluate(() => !!document.getElementById('clerkAuth')));
+
   /* A class id comes from the database, not from a person typing it, so it
      must survive untouched. The old code upper-cased it — a leftover from
      class codes — which meant every query asked for ALGEBRA2 while the table
