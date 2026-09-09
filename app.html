@@ -514,6 +514,13 @@ button{font:inherit;color:inherit}
   text-transform:uppercase; letter-spacing:.09em; color:var(--muted)}
 .wsbody{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,39%)}
 .wsbody.noproblem{grid-template-columns:minmax(0,1fr)}
+/* the teacher's opened board, one panel per workspace */
+.wsgroup{border:1px solid var(--line); border-radius:12px; margin:10px 0 14px; overflow:hidden}
+.wsghead{display:flex; align-items:center; gap:8px; padding:8px 14px; font-size:11px;
+  text-transform:uppercase; letter-spacing:.09em; color:var(--muted);
+  border-bottom:1px solid var(--line-soft); background:var(--surface-2)}
+.wsghead .partmark-btn{margin-left:auto}
+.wsgbody{padding:4px 8px 6px}
 .wslines{padding:6px 0; min-width:0}
 .wsproblem{border-left:1px dashed var(--line); padding:10px 14px; min-width:0; overflow:auto}
 .wsproblem .probitem{width:auto; border-right:0; padding:0}
@@ -854,7 +861,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v43</span></p>
+      <span class="ver">v44</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -895,7 +902,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v43</span></p>
+      <span class="ver">v44</span></p>
 
     <div id="splashPick">
       <p class="joinsub" id="splashHello"></p>
@@ -931,7 +938,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v43</span>
+      <span class="ver">v44</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -971,7 +978,7 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v43</span>
+    <span class="ver">v44</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -4049,12 +4056,11 @@ function sectionEnd(idx){ for(let i = idx + 1; i < lines.length; i++) if(lines[i
    `locked` is "the newest workspace's time is up". A board with no
    headings keeps the old behaviour: time up locks the whole board. */
 function isFrozen(idx){
-  const sec = sectionOf(idx), lp = lastPart();
-  if(lp < 0) return locked;                               // no workspaces at all
-  const timerOn = !!lines[lp].p.timed;
-  if(timerOn) return sec !== lp || locked;                // the timed one, until time is up
-  if(sec < 0) return false;                               // work before any heading
-  return !!lines[sec].p.timed;                            // a finished timed problem stays shut
+  /* Ryan's rule (v44): students may type in every workspace at all times.
+     A timer goes on the last problem only; when it runs out (`locked`)
+     everything locks until the next problem arrives. Nothing else freezes a
+     workspace — you can always go back to an earlier problem. */
+  return locked;
 }
 /* The headings on a board, in order, from its lines-as-strings. */
 function headingLabels(arr){
@@ -5682,42 +5688,50 @@ function drawWorkPanel(){
     host.appendChild(e);
     return;
   }
-  rows.forEach((t, i) => {
-    const lineId = ids[i] || ("i" + i);
-    const row = document.createElement("div"); row.className = "line wrow";
-
-    const g = document.createElement("div"); g.className = "gutter";
-    const n = document.createElement("b"); n.textContent = i + 1; g.appendChild(n);
-
-    const body = document.createElement("div"); body.className = "linebody";
-    const f = document.createElement("span"); f.className = "field";
-    if(isPartText(t)){
-      row.classList.add("part"); n.textContent = "";
-      const pl = partFromText(t);
-      const label = (pl && pl.p.label) || "Problem";
-      const h = document.createElement("div"); h.className = "partlabel";
-      h.textContent = label;
-      const btn = document.createElement("button");
-      btn.type = "button";
+  /* One panel per workspace, like the student sees — a heading becomes the
+     panel header (with its mark button), the work lines sit inside, and line
+     numbers restart per panel. Easier to read one problem at a time. */
+  let sectionBody = null;
+  const openSection = (label, isPart) => {
+    const sec = document.createElement("section"); sec.className = "wsgroup";
+    if(isPart){
+      const h = document.createElement("div"); h.className = "wsghead";
+      const tl = document.createElement("span"); tl.textContent = label || "Problem";
+      h.appendChild(tl);
       const on = !!((b.marks || {})[label]);
+      const btn = document.createElement("button"); btn.type = "button";
       btn.className = "btn partmark-btn" + (on ? " on" : "");
       btn.textContent = on ? "\u2713 marked" : "\u2713 mark";
       btn.addEventListener("click", e => { e.stopPropagation(); setMark(b, label, !on); });
       h.appendChild(btn);
-      body.appendChild(h);
-      row.append(g, body);
-      host.appendChild(row);
-      return;                      // notes go on lines of work, not on headings
-    } else if(isGraphText(t)){
+      sec.appendChild(h);
+    }
+    const bd = document.createElement("div"); bd.className = "wsgbody";
+    sec.appendChild(bd); host.appendChild(sec); sectionBody = bd;
+  };
+  rows.forEach((t, i) => {
+    const lineId = ids[i] || ("i" + i);
+    if(isPartText(t)){
+      const pl = partFromText(t);
+      openSection((pl && pl.p.label) || "Problem", true);
+      return;
+    }
+    if(!sectionBody) openSection(null, false);          // work before any heading
+    const row = document.createElement("div"); row.className = "line wrow";
+    const g = document.createElement("div"); g.className = "gutter";
+    const n = document.createElement("b");
+    n.textContent = sectionBody.querySelectorAll(".wrow").length + 1;
+    g.appendChild(n);
+    const body = document.createElement("div"); body.className = "linebody";
+    const f = document.createElement("span"); f.className = "field";
+    if(isGraphText(t)){
       const gl = graphFromText(t);
       const sol = gl ? solveGraph(gl.g) : {err:"?"};
-      const tag = document.createElement("span");
-      tag.className = "blank";
+      const tag = document.createElement("span"); tag.className = "blank";
       tag.textContent = sol.err || !sol.fn ? "a graph, not finished" : "a graph";
       f.appendChild(tag);
     } else {
-      const parsed = parseTex(t);
-      link(parsed.list, null);
+      const parsed = parseTex(t); link(parsed.list, null);
       f.appendChild(renderList(parsed.list, false));
     }
     body.appendChild(f);
@@ -5725,22 +5739,18 @@ function drawWorkPanel(){
     const here = !!(gField && gField.note && gField.k === lineId);
     const has = !!bag[lineId];
     if(here || has){
-      const note = document.createElement("div");
-      note.className = "wnote" + (here ? " here" : "");
-      const mark = document.createElement("i"); mark.textContent = "↳";
-      note.appendChild(mark);
-      const box = document.createElement("span");
-      box.className = "wnotebox";
-      if(here) box.appendChild(renderList(noteTreeFor(lineId), true));
-      else { const pp = parseTex(bag[lineId]); link(pp.list, null);
-             box.appendChild(renderList(pp.list, false)); }
-      box.addEventListener("mousedown", e => {
-        e.preventDefault(); e.stopPropagation(); focusNote(lineId);
-      });
+      const note = document.createElement("div"); note.className = "wnote" + (here ? " here" : "");
+      const mark = document.createElement("i"); mark.textContent = "\u21b3"; note.appendChild(mark);
+      const box = document.createElement("span"); box.className = "wnotebox";
+      // relink the note tree every draw: a freshly typed ^ makes a script
+      // node whose parent links are unset until link() runs, and without them
+      // the caret cannot move back out of the exponent
+      if(here){ const nt = noteTreeFor(lineId); link(nt, null); box.appendChild(renderList(nt, true)); }
+      else { const pp = parseTex(bag[lineId]); link(pp.list, null); box.appendChild(renderList(pp.list, false)); }
+      box.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); focusNote(lineId); });
       note.appendChild(box);
       if(has){
-        const x = document.createElement("button");
-        x.type = "button"; x.className = "wnotex"; x.textContent = "×";
+        const x = document.createElement("button"); x.type = "button"; x.className = "wnotex"; x.textContent = "\u00d7";
         x.title = "remove this note";
         x.addEventListener("click", ev => {
           ev.stopPropagation();
@@ -5753,18 +5763,13 @@ function drawWorkPanel(){
       }
       body.appendChild(note);
     }
-
-    const add = document.createElement("button");
-    add.type = "button";
+    const add = document.createElement("button"); add.type = "button";
     add.className = "wadd" + (has || here ? " on" : "");
     add.textContent = has || here ? "note" : "+ note";
     add.title = "write a note on this line";
-    add.addEventListener("mousedown", e => {
-      e.preventDefault(); e.stopPropagation(); focusNote(lineId);
-    });
-
+    add.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); focusNote(lineId); });
     row.append(g, body, add);
-    host.appendChild(row);
+    sectionBody.appendChild(row);
   });
   fitDelims(host);
 }
@@ -6829,6 +6834,7 @@ window.__chalkline = {
   room: r => normalRoom(r),
   mode: () => editorTarget.mode,
   teacherMarks: id => mkMap.get(id) || null,
+  notes: () => noteMap[editorTarget.boardId] || {},
   marks: () => myMarks,
   summary: (marks, labels) => marksSummary(marks, labels),
   clock: ms => clockTime(ms),
