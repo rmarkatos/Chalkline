@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v46` at the time of writing). **Bump it in
+There is a version chip on screen (`v47` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -314,6 +314,14 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 use until v46; now a tile shows every workspace and the open panel does too. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**v47 — the fallback is judged per write.** At v46 a student page showed
+*writing your board: PGRST204* before chalkline-06 was pasted: two board
+writes went out together at start-up, both were refused, the first set
+`noAwayColumn` and re-sent, the second saw the flag already set and
+reported instead. The retry now checks `"away_since" in row` for its own
+row, so every refused write re-sends itself. Ryan's forgot-password flow is
+confirmed working (tested by him, 2026-09-09).
 
 **v46 — the whole board on a tile; a red tile when a student leaves the
 screen.** Ryan: "On the teacher's overview of each student panel, I am only
