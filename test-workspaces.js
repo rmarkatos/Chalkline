@@ -113,9 +113,16 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   await teacher.waitForTimeout(900);
   const tile = await teacher.evaluate(() => {
     const t = document.querySelector('#tiles .tile');
-    return t ? {head: (t.querySelector('.partlabel') || {}).textContent, text: t.textContent} : null;
+    return t ? {heads: Array.from(t.querySelectorAll('.partlabel')).map(h => h.textContent),
+                nums: Array.from(t.querySelectorAll('.gutter b')).map(b => b.textContent).filter(Boolean),
+                text: t.textContent} : null;
   });
-  chk('the wall tile shows the workspace in use', !!tile && tile.head === 'Problem #2' && /z/.test(tile.text), JSON.stringify(tile));
+  // v46 — Ryan: "I am only seeing the work they have typed into the latest question"
+  chk('the wall tile shows every workspace, not just the one in use',
+      !!tile && tile.heads.join('|') === 'Earlier work|Problem #1|Problem #2' && /z/.test(tile.text) && /a=1|a.*1/.test(tile.text),
+      JSON.stringify(tile));
+  chk('tile line numbers restart under each heading', !!tile && tile.nums[0] === '1' && tile.nums.filter(n => n === '1').length === 3,
+      JSON.stringify(tile && tile.nums));
   chk('the tile never shows a heading\'s raw text', !!tile && !/%%P|label/.test(tile.text), JSON.stringify(tile));
 
   // ---- marking one workspace at a time ------------------------------------
@@ -311,6 +318,50 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   await priya.keyboard.type('?');
   L = await raw(priya);
   chk('a new problem lifts the lock everywhere', /\?/.test(L[3]), JSON.stringify(L[3]));
+
+  // ---- away (v46) -----------------------------------------------------------
+  // Ryan: "If the student leaves the screen I want their panel highlighted
+  // red ... I also want the time they have been idle counting."
+  if(await teacher.evaluate(() => { const b = document.getElementById('actingBack'); return !!b && b.offsetParent !== null; })){
+    await teacher.click('#actingBack'); await teacher.waitForTimeout(400);
+  }
+  const tileState = () => teacher.evaluate(() => {
+    const t = document.querySelector('#tiles .tile');
+    return t ? {away: t.classList.contains('away'), text: (t.querySelector('.tilehead .away') || {}).textContent || ''} : null;
+  });
+  let ts = await tileState();
+  chk('a tile starts out not away', !!ts && !ts.away && ts.text === '', JSON.stringify(ts));
+  // the real path: the page is hidden behind another tab
+  await priya.evaluate(() => {
+    Object.defineProperty(document, 'hidden', {get: () => true, configurable: true});
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await teacher.waitForTimeout(600);
+  chk('a hidden page counts as away', await priya.evaluate(() => window.__chalkline.away() !== null));
+  ts = await tileState();
+  chk('the tile goes red when the student leaves the screen', !!ts && ts.away, JSON.stringify(ts));
+  chk('the tile shows how long they have been away', !!ts && /^away \d+s$/.test(ts.text), JSON.stringify(ts));
+  await teacher.waitForTimeout(2200);
+  const ts2 = await tileState();
+  chk('the away time counts up', !!ts2 && ts2.text !== ts.text && /^away \d+s$/.test(ts2.text), JSON.stringify([ts, ts2]));
+  await priya.evaluate(() => {
+    Object.defineProperty(document, 'hidden', {get: () => false, configurable: true});
+    document.hasFocus = () => true;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await teacher.waitForTimeout(600);
+  ts = await tileState();
+  chk('coming back clears the red', !!ts && !ts.away && ts.text === '', JSON.stringify(ts));
+  // losing the window (clicking outside it) is the same signal
+  await priya.evaluate(() => { document.hasFocus = () => false; window.dispatchEvent(new Event('blur')); });
+  await teacher.waitForTimeout(600);
+  ts = await tileState();
+  chk('clicking outside the window counts as away too', !!ts && ts.away, JSON.stringify(ts));
+  await priya.evaluate(() => { document.hasFocus = () => true; window.dispatchEvent(new Event('focus')); });
+  await teacher.waitForTimeout(600);
+  ts = await tileState();
+  chk('focus back clears it', !!ts && !ts.away, JSON.stringify(ts));
+  chk('away text: seconds then minutes', await priya.evaluate(() => window.__chalkline.awayText(45000) === 'away 45s' && window.__chalkline.awayText(192000) === 'away 3m 12s'));
 
   console.log(`\nworkspaces: ${pass} passed, ${fail} failed`);
   console.log('errors:', errs.length ? errs : 'none');

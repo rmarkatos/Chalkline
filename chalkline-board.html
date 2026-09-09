@@ -51,6 +51,7 @@ window.CHALKLINE_CLERK = {
   --line:#C8D3D7; --line-soft:#DEE6E8;
   --accent:#0F766E; --accent-soft:#D9EBE8; --accent-ink:#0B5D56;
   --slot:#B45309; --slot-soft:#F7E9D6;
+  --away:#B91C1C; --away-soft:#FBE3E3;
   --sel:#BFE3DD;
   --shadow:0 1px 2px rgba(17,26,30,.06), 0 8px 24px rgba(17,26,30,.06);
 }
@@ -61,6 +62,7 @@ window.CHALKLINE_CLERK = {
     --line:#274039; --line-soft:#1D332E;
     --accent:#5FCBB7; --accent-soft:#183732; --accent-ink:#8FE0D0;
     --slot:#E0A458; --slot-soft:#2C2519;
+    --away:#F87171; --away-soft:#3A1A1A;
     --sel:#22463F;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
   }
@@ -71,6 +73,7 @@ window.CHALKLINE_CLERK = {
   --line:#274039; --line-soft:#1D332E;
   --accent:#5FCBB7; --accent-soft:#183732; --accent-ink:#8FE0D0;
   --slot:#E0A458; --slot-soft:#2C2519;
+  --away:#F87171; --away-soft:#3A1A1A;
   --sel:#22463F;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
 }
@@ -546,6 +549,11 @@ button{font:inherit;color:inherit}
 .line.part .partlabel{display:flex; align-items:center}
 .tile.stale{opacity:.55}
 .tile.stale .ago{color:var(--slot)}
+/* away (v46): the student's page is hidden behind another tab or has lost
+   focus. The tile goes red and the head shows how long, counting up. */
+.tile.away{border-color:var(--away); box-shadow:0 0 0 2px var(--away-soft), var(--shadow)}
+.tile.away .tilehead{background:var(--away-soft)}
+.tilehead .away{font-size:10.5px; color:var(--away); font-weight:600; font-variant-numeric:tabular-nums}
 .tilebody{padding:8px 12px 12px; overflow:hidden; flex:1}
 .tilebody .field{font-size:16px; padding:0}
 .tilebody .linebody{padding:3px 0; min-height:0; overflow:hidden}
@@ -867,7 +875,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v45</span></p>
+      <span class="ver">v46</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -908,7 +916,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v45</span></p>
+      <span class="ver">v46</span></p>
 
     <!-- Clerk's sign-in is mounted here, not opened as a modal — a modal
          vanished the moment you clicked outside it, before you had signed in -->
@@ -948,7 +956,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v45</span>
+      <span class="ver">v46</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -988,7 +996,7 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v45</span>
+    <span class="ver">v46</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -1117,6 +1125,9 @@ let waitPoll = null, splashPoll = null;
    very first render(), long before that code is reached. Sixth time this
    trap has bitten; test-boot.js is what caught it. */
 let locked = false;
+/* When this student's page went out of sight (another tab, another window),
+   or null while it is in view. Sent with every board write (v46). */
+let awaySince = null, awayWatched = false;
 let connState = "connecting", teacherHere = false, teacherHereName = "";
 /* One key per problem item, in order — the same recipe stripKey() uses for
    the whole strip, so "changed" and "which one changed" cannot disagree. */
@@ -1181,7 +1192,7 @@ function normalRoom(room){
                       : (room || "ALG2").trim().toUpperCase();
 }
 let editorTarget = {mode:"idle"};
-let pubTimer = null, heartbeat = null, agoTimer = null;
+let pubTimer = null, heartbeat = null, agoTimer = null, awayTimer = null;
 /* Opening a panel loads content into the editor, which renders, which would
    otherwise publish — writing a blank board over feedback that already exists.
    One render after a load is skipped for that reason. Declared here, with the
@@ -4679,7 +4690,8 @@ function FirebaseSync(room, role){
       const r = d.ref(db, R + "/boards/" + uid);
       d.onDisconnect(r).remove();             // close the tab, leave the wall
       W("your board", d.set(r, {name:p.name || "student", lines:p.lines || [],
-                                ids:p.ids || [], at:d.serverTimestamp()}));
+                                ids:p.ids || [], at:d.serverTimestamp(),
+                                awaySince:p.awaySince || null}));
     }
     else if(type === "feedback") W("feedback", d.set(d.ref(db, R + "/feedback/" + p.id),
                                        {lines:p.lines || [], notes:p.notes || {}}));
@@ -4870,18 +4882,35 @@ function SupabaseSync(classId, asRole){
   const boardMsg = r => ({id:r.student_id, name:r.name || "student",
                           lines:r.lines || [], ids:r.ids || [],
                           at: r.at ? Date.parse(r.at) : Date.now(),
-                          joinedAt: r.joined_at ? Date.parse(r.joined_at) : null});
+                          joinedAt: r.joined_at ? Date.parse(r.joined_at) : null,
+                          awaySince: r.away_since ? Date.parse(r.away_since) : null});
+  /* boards.away_since arrived in v46 (paste chalkline-06). If the database
+     has not been given the column yet, PostgREST answers PGRST204 and the
+     whole board write fails — the student would vanish from the wall. So
+     the first such refusal drops the column for the rest of the session and
+     the board keeps flowing, minus the red highlight, until the paste. */
+  let noAwayColumn = false;
 
   function doSend(type, p){
     if(!ready || dead) return;
     if(type === "hello") return;                 // a database needs no roll-call
     const T = supa.from.bind(supa);
     if(type === "board"){
-      W("your board", T("boards").upsert({
+      const row = {
         class_id: classId, student_id: uid, name: p.name || "student",
         lines: p.lines || [], ids: p.ids || [], at: new Date().toISOString(),
         joined_at: joinedAt
-      }, {onConflict: "class_id,student_id"}));
+      };
+      if(!noAwayColumn) row.away_since = p.awaySince ? new Date(p.awaySince).toISOString() : null;
+      const key = {onConflict: "class_id,student_id"};
+      W("your board", T("boards").upsert(row, key).then(r => {
+        if(r && r.error && r.error.code === "PGRST204" && !noAwayColumn){
+          noAwayColumn = true;
+          delete row.away_since;
+          return T("boards").upsert(row, key);
+        }
+        return r;
+      }));
     }
     else if(type === "feedback"){
       W("feedback", T("feedback").upsert({
@@ -5239,6 +5268,29 @@ function flashBoard(){
 }
 
 /* ---- publishing ------------------------------------------------------- */
+/* Away (v46). Ryan: "If the student leaves the screen I want their panel
+   highlighted red ... and the time they have been idle counting." The page
+   can tell when it is hidden behind another tab (visibilitychange) or when
+   the window has lost focus (blur) — not what the student switched to.
+   A second monitor or a dimmed phone reads as away too; that is the limit
+   of what a browser is told. The change is sent at once, not on the next
+   heartbeat, so the wall goes red within a poll. */
+function isAwayNow(){ return document.hidden || !document.hasFocus(); }
+function noteAway(flag){
+  const was = !!awaySince;
+  if(flag && !was) awaySince = Date.now();
+  else if(!flag && was) awaySince = null;
+  else return;                                   // no change — a repeat
+  if(sync && editorTarget.mode === "student") publishNow();
+}
+function watchAway(){
+  if(awayWatched) return;                        // leave + rejoin must not double the listeners
+  awayWatched = true;
+  const look = () => noteAway(isAwayNow());
+  document.addEventListener("visibilitychange", look);
+  window.addEventListener("blur", look);
+  window.addEventListener("focus", look);
+}
 function schedulePublish(){
   if(holdPublish){ holdPublish = false; return; }
   if(!sync) return;
@@ -5249,7 +5301,7 @@ function publishNow(){
   if(!sync) return;
   if(editorTarget.mode === "student"){
     sync.send("board", {id:myId, name:myName, lines:currentLines(),
-                        ids:currentIds(), at:Date.now()});
+                        ids:currentIds(), at:Date.now(), awaySince:awaySince});
   } else if(editorTarget.mode === "feedback"){
     sync.send("feedback", {id:editorTarget.boardId, lines:currentLines(),
                            notes:noteMap[editorTarget.boardId] || {}});
@@ -5330,6 +5382,7 @@ function join(asRole, room, name){
       myId = id;
       publishNow();
       heartbeat = setInterval(publishNow, 8000);
+      watchAway();
     });
 
   } else {
@@ -5363,6 +5416,7 @@ function join(asRole, room, name){
       boards.set(m.id, {id:m.id, name:m.name || "student", lines:asLines(m.lines),
                         ids:asLines(m.ids), at:m.at || Date.now(),
                         joinedAt: m.joinedAt || prev.joinedAt || null,
+                        awaySince: m.awaySince || null,
                         marks: mkMap.get(m.id) || prev.marks || {},
                         feedback: fbMap.get(m.id) || prev.feedback || [],
                         check: ckMap.has(m.id) ? ckMap.get(m.id) : !!prev.check});
@@ -5415,12 +5469,13 @@ function join(asRole, room, name){
     touchedRooms.add(myRoom);
     sync.ready(() => sync.send("hello", {}));
     agoTimer = setInterval(refreshAges, 5000);
+    awayTimer = setInterval(tickAway, 1000);
   }
 }
 function leave(){
   const wasTeacher = role === "teacher";
   if(wasTeacher) stopTeacherBeat();      // before role and room are cleared
-  clearInterval(heartbeat); clearInterval(agoTimer); clearTimeout(pubTimer);
+  clearInterval(heartbeat); clearInterval(agoTimer); clearInterval(awayTimer); clearTimeout(pubTimer);
   if(sync) sync.close();
   sync = null; role = null; boards.clear(); fbMap.clear(); ckMap.clear();
   clearTimeout(flushTimer); flushTimer = null; dirtyTiles.clear();
@@ -5460,7 +5515,9 @@ function ago(ms){
 function renderStatic(host, arr, deferFit, view){
   host.textContent = "";
   const rows = asLines(arr).filter(t => t.trim());
-  // a tile shows the workspace the student is in; the open panel shows all
+  // Since v46 a tile shows every workspace (Ryan: "I am only seeing the work
+  // they have typed into the latest question"). "active" is kept for anyone
+  // who wants the old cut, but nothing passes it now.
   let shown = rows;
   if(view === "active"){
     let last = -1; rows.forEach((t, i) => { if(isPartText(t)) last = i; });
@@ -5472,13 +5529,15 @@ function renderStatic(host, arr, deferFit, view){
     host.appendChild(b);
     return;
   }
-  shown.slice(0, 7).forEach((t, i) => {
+  const CAP = 18;                      // rows before "+N more" (was 7 for one workspace)
+  let num = 0;                         // line numbers restart under each heading, as on the board
+  shown.slice(0, CAP).forEach(t => {
     const row = document.createElement("div"); row.className = "line";
     const g = document.createElement("div"); g.className = "gutter";
-    const n = document.createElement("b"); n.textContent = i + 1; g.appendChild(n);
+    const n = document.createElement("b"); n.textContent = ++num; g.appendChild(n);
     const body = document.createElement("div"); body.className = "linebody";
     if(isPartText(t)){
-      row.classList.add("part"); n.textContent = "";
+      row.classList.add("part"); n.textContent = ""; num = 0;
       const pl = partFromText(t);
       const h = document.createElement("div"); h.className = "partlabel";
       h.textContent = (pl && pl.p.label) || "Problem";
@@ -5514,9 +5573,9 @@ function renderStatic(host, arr, deferFit, view){
     row.append(g, body);
     host.appendChild(row);
   });
-  if(shown.length > 7){
+  if(shown.length > CAP){
     const m = document.createElement("div");
-    m.className = "blank"; m.textContent = "+" + (shown.length - 7) + " more";
+    m.className = "blank"; m.textContent = "+" + (shown.length - CAP) + " more";
     host.appendChild(m);
   }
   if(!deferFit) fitDelims(host);
@@ -5535,16 +5594,34 @@ function buildTile(b){
   const nm = document.createElement("b");
   const j = document.createElement("span"); j.className = "joined";
   const t = document.createElement("span"); t.className = "ago";
-  head.append(nm, j, t);
+  const a = document.createElement("span"); a.className = "away";
+  head.append(nm, j, a, t);
   const body = document.createElement("div"); body.className = "tilebody";
   tile.append(head, body);
   tile.addEventListener("click", () => openBoard(b.id));
-  tile.__name = nm; tile.__joined = j; tile.__ago = t; tile.__body = body; tile.__sig = null;
+  tile.__name = nm; tile.__joined = j; tile.__ago = t; tile.__away = a; tile.__body = body; tile.__sig = null;
   return tile;
+}
+/* "away 45s", "away 3m 12s" — pure, for the tile head */
+function awayText(ms){
+  const s = Math.max(0, Math.round(ms / 1000));
+  return "away " + (s < 60 ? s + "s" : Math.floor(s / 60) + "m " + (s % 60) + "s");
+}
+function paintAway(tile, b){
+  const on = !!b.awaySince;
+  tile.classList.toggle("away", on);
+  tile.__away.textContent = on ? awayText(Date.now() - b.awaySince) : "";
+}
+function tickAway(){                     // every second, only the red tiles change
+  for(const [id, tile] of tileEls){
+    const b = boards.get(id);
+    if(b && (b.awaySince || tile.classList.contains("away"))) paintAway(tile, b);
+  }
 }
 function paintTile(tile, b, deferFit){
   tile.classList.toggle("stale", Date.now() - b.at > 25000);
   tile.__ago.textContent = ago(b.at);
+  paintAway(tile, b);
   const labels = headingLabels(b.lines);
   const ms = marksSummary(b.marks, labels);
   const sig = b.name + "|" + (b.check ? "1" : "0") + "|" + (b.joinedAt || "") + "|" + ms.n + "/" + ms.m;
@@ -5561,7 +5638,7 @@ function paintTile(tile, b, deferFit){
   const body = asLines(b.lines).join("\u0001");
   if(tile.__sig !== body){            // only re-typeset when the maths changed
     tile.__sig = body;
-    renderStatic(tile.__body, b.lines, deferFit, "active");
+    renderStatic(tile.__body, b.lines, deferFit);
   }
 }
 function drawTiles(){
@@ -6883,6 +6960,9 @@ window.__chalkline = {
   stripExpired: () => document.getElementById("probStrip").classList.contains("expired"),
   present: (row, now) => teacherPresent(row, now),
   asStudent: () => { role = "student"; },
+  away: () => awaySince,
+  setAway: f => noteAway(!!f),
+  awayText: ms => awayText(ms),
   timer: (s, e) => startTimer(s, e),
   locked: () => isLocked(),
   plan: (c, e) => splashPlan(c, e),

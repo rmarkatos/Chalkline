@@ -175,6 +175,11 @@ async function tryQuery(db, sql, params) {
   chk('writing more work does not move the join time',
       r.ok && r.rows.length === 1 && String(r.rows[0].joined_at) === joined0,
       r.ok ? String(r.rows[0] && r.rows[0].joined_at) + ' vs ' + joined0 : r.err);
+  // v46: away_since travels with the board and may be cleared again
+  r = await tryQuery(db, `update public.boards set away_since = now() where student_id='user_amy' returning away_since`);
+  chk('a student may say their page went out of sight', r.ok && r.rows.length === 1 && !!r.rows[0].away_since, r.err);
+  r = await tryQuery(db, `update public.boards set away_since = null where student_id='user_amy' returning away_since`);
+  chk('and that it is back', r.ok && r.rows.length === 1 && r.rows[0].away_since === null, r.err);
   r = await tryQuery(db,
     `update public.enrolments set status='approved' where student_id='user_ben' returning *`);
   chk('student CANNOT approve anyone', !r.ok || r.rows.length === 0,

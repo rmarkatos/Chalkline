@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v43` at the time of writing). **Bump it in
+There is a version chip on screen (`v46` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -103,7 +103,7 @@ sweeps anything quiet for 30s, so the sweep was doing the real work all along. M
 
 ```
 rooms/<CODE>/
-  boards/<id>     {name, lines[], ids[], at}     written by that student alone
+  boards/<id>     {name, lines[], ids[], at, awaySince}   written by that student alone
   feedback/<id>   {lines[], notes:{lineId: latex}}
   checks/<id>     true | false
   problem         {items:[{lines[], images[]}], at}
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~690 assertions plus 500 generated round-trips.
+23 suites, ~710 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -310,10 +310,53 @@ before it is **frozen**: still on screen, greyed, `pointer-events:none`, and
 workspace, `removeLine` never lands the caret on a heading, and *Clear
 board* clears only the workspace in use (`clearActive`). A new problem calls
 `openWorkspace(label)`: work done before the first problem is kept under
-*Earlier work* unless the board was empty. Tiles show the workspace in use
-(`renderStatic(..., "active")`); the open panel shows all. `tex()` in the
+*Earlier work* unless the board was empty. Tiles showed only the workspace in
+use until v46; now a tile shows every workspace and the open panel does too. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**v46 — the whole board on a tile; a red tile when a student leaves the
+screen.** Ryan: "On the teacher's overview of each student panel, I am only
+seeing the work they have typed into the latest question." `paintTile` no
+longer passes `"active"` to `renderStatic`: a tile shows every workspace,
+line numbers restart under each heading (as on the board), and the cap
+before *+N more* is 18 rows, not 7. And: "If the student leaves the screen
+I want their panel highlighted red ... I also want the time they have been
+idle counting." The student page listens for `visibilitychange` (another
+tab), `blur` and `focus` (another window); `noteAway()` stamps `awaySince`
+when the page goes out of sight, clears it when it comes back, and calls
+`publishNow()` at once so the wall hears within a poll. `awaySince` rides
+in the board message, the Firebase node and a new `boards.away_since`
+column (paste **chalkline-06**). The tile gets `.away` (red border and
+head, `--away`/`--away-soft` tokens in all three themes) and an *away 1m
+12s* counter ticked every second by `tickAway`. Two limits told to Ryan:
+the browser says the page is hidden or unfocused, not what the student
+switched to; a second monitor or a dimmed phone reads as away. **The
+Supabase write survives the paste not having happened**: PostgREST answers
+PGRST204 for an unknown column, which would have failed the entire board
+write and dropped the student from the wall — so the first refusal sets
+`noAwayColumn` and the row is re-sent without it. `test-workspaces` covers
+all of it through the real events (`document.hidden` redefined,
+`hasFocus` stubbed) and `test-schema` writes and clears the column.
+
+**v45 — the sign-in box is mounted, not a modal.** Ryan: the box vanished
+on an outside click. `showSignInPanel()` calls `clerk.mountSignIn` into
+`#clerkAuth` on the splash and adds one `clerk.addListener` (guarded by
+`authListenerAdded`) that unmounts and runs `startAccounts()` once a user
+appears. `authMounted`/`authListenerAdded` are hoisted. `test-boot`
+asserts `#clerkAuth` exists.
+
+**v44 — the looser timer rule, and the teacher's panel per workspace.**
+Ryan settled the timer reading: students may type in *every* workspace at
+all times; a timer goes on the last problem only; when it runs out
+(`locked`) everything locks until the next problem arrives. `isFrozen()`
+is now simply `return locked`; `markTimed()` still tags headings but
+nothing reads the tag. `drawWorkPanel` groups the open board into one
+`.wsgroup` per workspace (`.wsghead` label + mark button, `.wsgbody`),
+numbers restarting per section. A real bug found there: the note tree was
+linked once and cached, so `x^2` then `+7` in a feedback note landed inside
+the exponent; every draw now relinks (`link(nt, null)`), proven with
+`x^{2+7}` in the falsification run.
 
 **v43 — "Structure", and a piecewise function.** The first palette section
 is *Structure* (was Templates). Two new buttons, `pw2` and `pw3`, insert

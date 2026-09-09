@@ -90,6 +90,9 @@ create table if not exists public.boards (
 -- a re-join after the row was swept is a new row and a new time. The wall
 -- shows it next to the name.
 alter table public.boards add column if not exists joined_at timestamptz not null default now();
+-- v46: when this student's page went out of sight (another tab or window),
+-- or null while it is in view. The wall turns the tile red and counts up.
+alter table public.boards add column if not exists away_since timestamptz;
 
 create table if not exists public.feedback (
   class_id   text not null references public.classes(id) on delete cascade,
