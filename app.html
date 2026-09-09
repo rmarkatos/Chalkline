@@ -871,7 +871,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v46</span></p>
+      <span class="ver">v47</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -912,7 +912,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v46</span></p>
+      <span class="ver">v47</span></p>
 
     <!-- Clerk's sign-in is mounted here, not opened as a modal — a modal
          vanished the moment you clicked outside it, before you had signed in -->
@@ -952,7 +952,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v46</span>
+      <span class="ver">v47</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -992,7 +992,7 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v46</span>
+    <span class="ver">v47</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -4900,7 +4900,10 @@ function SupabaseSync(classId, asRole){
       if(!noAwayColumn) row.away_since = p.awaySince ? new Date(p.awaySince).toISOString() : null;
       const key = {onConflict: "class_id,student_id"};
       W("your board", T("boards").upsert(row, key).then(r => {
-        if(r && r.error && r.error.code === "PGRST204" && !noAwayColumn){
+        // v47: judged per write, not by the flag — two writes in flight at
+        // start-up both got PGRST204, the first set the flag and retried,
+        // the second saw the flag already set and showed the banner.
+        if(r && r.error && r.error.code === "PGRST204" && ("away_since" in row)){
           noAwayColumn = true;
           delete row.away_since;
           return T("boards").upsert(row, key);
