@@ -363,6 +363,17 @@ const LAUNCH = process.env.CHROME ? { executablePath: process.env.CHROME } : {};
   chk('focus back clears it', !!ts && !ts.away, JSON.stringify(ts));
   chk('away text: seconds then minutes', await priya.evaluate(() => window.__chalkline.awayText(45000) === 'away 45s' && window.__chalkline.awayText(192000) === 'away 3m 12s'));
 
+  // ---- "a newer version is out" (v48) ----------------------------------------
+  const mine = await priya.evaluate(() => window.__chalkline.version());
+  chk('the page knows its own version', /^v\d+$/.test(mine), mine);
+  const bump = n => '<p><span class="ver">v' + n + '</span></p>';
+  const shown = html => priya.evaluate(h => { window.__chalkline.liveVersion(h); return !document.getElementById('verBar').hidden; }, html);
+  chk('a newer version on the site raises the notice', await shown(bump(+mine.slice(1) + 1)));
+  chk('the notice offers a Reload button', await priya.evaluate(() => { const b = document.getElementById('verReload'); return !!b && /reload/i.test(b.textContent); }));
+  chk('the same version raises nothing', !(await shown(bump(+mine.slice(1)))));
+  chk('an OLDER copy served by a cache raises nothing either', !(await shown(bump(+mine.slice(1) - 1))));
+  chk('a page with no chip raises nothing', !(await shown('<p>not chalkline</p>')));
+
   console.log(`\nworkspaces: ${pass} passed, ${fail} failed`);
   console.log('errors:', errs.length ? errs : 'none');
   await b.close();

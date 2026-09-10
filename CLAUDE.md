@@ -24,7 +24,7 @@ supporting. After any change:
 
 ```bash
 python3 build.py       # writes chalkline-board.html and index.html
-./run-tests.sh         # runs all 23 suites, prints one line each
+./run-tests.sh         # runs all 24 suites, prints one line each
 git push               # deploys — index.html on main IS the live site
 ```
 
@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v47` at the time of writing). **Bump it in
+There is a version chip on screen (`v48` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-23 suites, ~710 assertions plus 500 generated round-trips.
+24 suites, ~770 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -162,7 +162,15 @@ without a heartbeat and are swept, so an absent student never appears.
 node test-notes.js        # one suite, full output
 ```
 
-They drive real Chromium through Playwright against the built file. Firebase is
+They drive real Chromium through Playwright against the built file. **The
+database path has its own suite since v48**: `test-supabase.js` fills the
+accounts settings into a copy of the page and answers the two library
+downloads with **`fake-clerk.js`** and **`fake-supabase.js`**, so
+`SupabaseSync`, the splash, the approvals queue and the wall run exactly as
+written against an in-browser database. That stand-in reads the column list
+out of `supabase-schema.sql` and refuses an unknown column with PGRST204,
+as PostgREST does, and it delivers no live updates, as the real one never
+did. Its first run found a live bug (see v48). The older suites: Firebase is
 replaced by **`fake-firebase.js`** (an in-memory database replicated between
 pages over BroadcastChannel) and **`fake-firebase-rules.js`**, which is the same
 thing *plus* an enforcement of the published rules. `test-rules.js` runs a whole
@@ -314,6 +322,30 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 use until v46; now a tile shows every workspace and the open panel does too. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**v48 — a "newer version" notice; the database path under test; a delete
+that never ran.** Three things.
+1. *A newer version of Chalkline is out — Reload.* `checkLiveVersion()`
+   fetches the page itself every three minutes (`cache:"no-store"`, only
+   when the tab is visible, only over http/https), reads the chip out of
+   it (`liveVersionOf`) and shows `#verBar` when the live number is
+   **greater** than `APP_VERSION` — an older copy from a cache must not
+   raise it. Nobody is reloaded without clicking. Hooks `version()` and
+   `liveVersion(html)`; `test-workspaces` covers newer/same/older/no chip.
+2. `test-supabase.js` — see Testing. 55 checks: sign-in as teacher and as
+   students, ask/approve, the board on the wall, a pushed problem with a
+   timer, feedback, a per-workspace mark, away and back, a student on a
+   database that has not had the latest paste (the v47 fallback), a stale
+   row dropped while a live one survives an impatient wall, the mounted
+   sign-in box, leaving, and ending the lesson.
+3. **The bug it found on its first run.** supabase-js only sends a query
+   when something calls `.then()` on it (awaits it). `SupabaseSync.close()`
+   built its "delete my board" query and dropped it, and `drop(id)` returned
+   its builder to callers that never awaited it — so *neither ever ran on
+   the live site*. A student who left stayed on the wall until the 30s
+   sweep, and stale rows were never cleaned up. Both now end in `.then()`.
+   Rule: **a supabase-js query that is not awaited did not happen.**
+   Falsified: removing the `.then()` reds "leaving removes the board row".
 
 **v47 — the fallback is judged per write.** At v46 a student page showed
 *writing your board: PGRST204* before chalkline-06 was pasted: two board
@@ -575,17 +607,17 @@ so it confirms their algebra. One family so far: **logarithmic**.
    `enrolments` table and policies already allow all of it.
 2. **Clerk's box should open on Sign up**, not Sign in. Every new person's
    first action is Sign up and the link is small.
-3. **A test that drives `SupabaseSync`.** The 11 database suites still drive
-   the Firebase path, which is what runs when settings are empty. Nothing
-   automated exercises the Supabase path; real students found the last two
-   bugs. A stand-in for Supabase, or the schema suite's PGlite, is the way in.
+3. ~~A test that drives `SupabaseSync`~~ — done in v48 (`test-supabase.js`).
+   Worth extending as features land: every new column or message should get
+   a check there, since the stand-in refuses unknown columns.
 4. **Then graphing**, unchanged from before: a family picker first (every
    graph line is logarithmic), then linear and quadratic, then exponential.
    `FAMILIES` is a table; each entry declares its features and how to solve
    itself. Rational needs renderer work for poles. **Trig needs parameter
    inputs, not points.**
-5. **The Firebase path can go** once (3) exists. Until then it is the only
-   thing the database suites test, so it stays.
+5. **The Firebase path can go** now that (3) exists — but the 11 older
+   classroom suites still drive it, so retiring it means pointing them at
+   the Supabase stand-in first. Not urgent; it costs nothing while it stays.
 
 ---
 
@@ -611,3 +643,6 @@ so it confirms their algebra. One family so far: **logarithmic**.
 | `test-schema.js` | runs the schema against real Postgres (PGlite) and tries to break the rules as four different people |
 | `test-boot.js` | the only suite that runs with accounts *on* — settings pointed at nowhere — to catch a declaration used before it is reached |
 | `fake-firebase*.js` | the stand-in Firebase, with and without rules enforcement |
+| `fake-supabase.js` | the stand-in Supabase: in-browser tables shared between pages, refuses unknown columns, no live updates |
+| `fake-clerk.js` | the stand-in Clerk: who is signed in comes from the test |
+| `test-supabase.js` | the only suite that runs the accounts + Supabase path end to end |

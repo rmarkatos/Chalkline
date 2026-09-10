@@ -810,6 +810,15 @@ button{font:inherit;color:inherit}
   padding:3px 9px; border-radius:5px; display:inline-block;
 }
 #errBar b{display:block; font:600 13px system-ui; margin-bottom:4px}
+/* "a newer version is out" (v48): a quiet pill, the person chooses when */
+#verBar{
+  position:fixed; left:50%; bottom:14px; transform:translateX(-50%); z-index:9998;
+  display:flex; align-items:center; gap:12px;
+  background:var(--accent-soft); color:var(--accent-ink); border:1px solid var(--accent);
+  border-radius:999px; padding:6px 8px 6px 16px; font:13px "IBM Plex Sans",system-ui;
+  box-shadow:var(--shadow);
+}
+#verBar .errbtn{margin-top:0; border-color:var(--accent); background:var(--surface); color:var(--accent-ink)}
 .errbtn{
   margin-top:9px; border:1px solid #e0a458; background:#4a2f16; color:#ffe3c2;
   border-radius:6px; padding:5px 14px; cursor:pointer;
@@ -871,7 +880,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v47</span></p>
+      <span class="ver">v48</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -912,7 +921,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v47</span></p>
+      <span class="ver">v48</span></p>
 
     <!-- Clerk's sign-in is mounted here, not opened as a modal — a modal
          vanished the moment you clicked outside it, before you had signed in -->
@@ -952,7 +961,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v47</span>
+      <span class="ver">v48</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -992,7 +1001,7 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v47</span>
+    <span class="ver">v48</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -1086,6 +1095,8 @@ button{font:inherit;color:inherit}
 
 </div><!-- /viewBoard -->
 
+<div id="verBar" hidden><span>A newer version of Chalkline is out.</span>
+  <button class="errbtn" id="verReload" type="button">Reload</button></div>
 <div id="errBar" hidden><button class="x" id="errX" title="Dismiss">&times;</button>
   <b>Something went wrong &mdash; please send this message to your teacher</b><div id="errList"></div></div>
 
@@ -5138,8 +5149,12 @@ function SupabaseSync(classId, asRole){
       dead = true;
       clearInterval(pollTimer); pollTimer = null;
       channels.splice(0).forEach(c => { try{ supa.removeChannel(c); }catch(e){} });
+      // .then() is what makes supabase-js send a query: a builder nobody
+      // awaits never runs. Until v48 this delete never happened, so a student
+      // who left stayed on the wall until the 30s sweep (found by test-supabase)
       if(uid) try{ supa.from("boards").delete()
-                       .eq("class_id", classId).eq("student_id", uid); }catch(e){}
+                       .eq("class_id", classId).eq("student_id", uid)
+                       .then(() => {}, () => {}); }catch(e){}
     },
     wipe(){ return supa.rpc("end_lesson", {cls: classId}); },
     now(){ return Date.now() + offset; },
@@ -5153,9 +5168,11 @@ function SupabaseSync(classId, asRole){
        rather than a page that may simply not be listening. */
     drop(id){
       const cutoff = new Date(Date.now() + offset - 30000).toISOString();
+      // same as close(): without .then() the query is never sent (v48)
       return supa.from("boards").delete()
                  .eq("class_id", classId).eq("student_id", id)
-                 .lt("at", cutoff);
+                 .lt("at", cutoff)
+                 .then(r => r, () => null);
     }
   };
 }
@@ -5505,6 +5522,35 @@ function afterLeave(wasTeacher){
 }
 
 /* ---- teacher: the wall of boards -------------------------------------- */
+/* ---- a newer version is out (v48) --------------------------------------
+   After a deploy a normal reload can keep serving the previous build for a
+   while, and half of one evening's confusion was a student on the old
+   build. So the page fetches itself every few minutes, reads the version
+   chip out of what came back, and offers a Reload if the site has moved
+   on. Only "newer" counts: a cache briefly serving an OLDER copy must not
+   raise it. Nobody is reloaded without clicking. */
+const APP_VERSION = (document.querySelector(".ver") || {}).textContent || "";
+function versionNumber(v){ const m = /^v(\d+)$/.exec(v || ""); return m ? +m[1] : null; }
+function liveVersionOf(html){ const m = /class="ver">(v\d+)</.exec(html || ""); return m ? m[1] : null; }
+function noteLiveVersion(html){
+  const bar = document.getElementById("verBar");
+  if(!bar) return false;
+  const mine = versionNumber(APP_VERSION), live = versionNumber(liveVersionOf(html));
+  const newer = mine !== null && live !== null && live > mine;
+  bar.hidden = !newer;
+  return newer;
+}
+async function checkLiveVersion(){
+  if(location.protocol !== "http:" && location.protocol !== "https:") return;
+  if(document.hidden) return;                    // nobody is looking
+  try{
+    const r = await fetch(location.pathname + "?fresh=" + Date.now(), {cache:"no-store"});
+    if(r.ok) noteLiveVersion(await r.text());
+  }catch(e){}                                    // offline is not news
+}
+setInterval(checkLiveVersion, 3 * 60 * 1000);
+document.getElementById("verReload").addEventListener("click", () => location.reload());
+
 function ago(ms){
   const s = Math.round((Date.now() - ms) / 1000);
   if(s < 5) return "now";
@@ -6962,6 +7008,8 @@ window.__chalkline = {
   away: () => awaySince,
   setAway: f => noteAway(!!f),
   awayText: ms => awayText(ms),
+  version: () => APP_VERSION,
+  liveVersion: html => noteLiveVersion(html),
   timer: (s, e) => startTimer(s, e),
   locked: () => isLocked(),
   plan: (c, e) => splashPlan(c, e),
