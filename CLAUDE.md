@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v48` at the time of writing). **Bump it in
+There is a version chip on screen (`v49` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-24 suites, ~770 assertions plus 500 generated round-trips.
+24 suites, ~790 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -322,6 +322,33 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 use until v46; now a tile shows every workspace and the open panel does too. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**v49 — the roster.** Ryan: "something small I did not think of but would
+be excellent." A **Roster** button on the wall (accounts only) opens
+`#rosterPanel`: every approved student in this class with their email, a
+**Remove** button and one **Move to <other class>** button per other class;
+below it, *Not in this class* lists removed students with **Let back in**.
+`loadRoster` / `setEnrolment` / `moveStudent` — a move marks this class's
+row `removed` (so it is not offered again) and approves the student in the
+other class, updating an existing row there or inserting one; the existing
+policy *teachers decide enrolments* (for all) allows every part of it, so
+**no schema change**. `dropBoardOf` takes a removed student's tile off the
+wall at once. The roster redraws on the wall's 5s poll but only when the
+rows changed (`rosterKey`), so buttons are not rebuilt under a click. The
+class picker now reads *Algebra 2 (12 students, 1 waiting)*. **The
+student's side:** `watchStillIn()` asks every 6s whether they are still
+approved in the class they are writing in; if not, `leave()`, the splash
+is redrawn with "Your teacher has moved you out of Algebra 2. Pick a class
+below.", and — a gap this exposed — `watchMyEnrolment()` is started again,
+because the splash poll stops itself when a board opens and nothing
+restarted it (the *Open my board again* button had the same gap; fixed).
+In the few seconds before that poll fires a removed student's next write
+is refused by the rules and shows the usual 42501 banner; acceptable.
+`test-supabase` (73 checks) moves Ben, removes and readmits Amy, watches
+both students' pages react without a refresh, and reads the counts off
+the picker; `test-schema` proves the teacher may insert an approved row
+and flip a status both ways. Falsified: a move that never approves in the
+new class, and a send-out that never fires, each red their own checks.
 
 **v48 — a "newer version" notice; the database path under test; a delete
 that never ran.** Three things.
@@ -601,10 +628,7 @@ so it confirms their algebra. One family so far: **logarithmic**.
 
 ### Next
 
-1. **Roster management.** The wall shows only who is *waiting*. There is no
-   list of who is already approved and no way to remove someone, and a
-   student who picks the wrong class cannot be moved. Short job; the
-   `enrolments` table and policies already allow all of it.
+1. ~~Roster management~~ — done in v49.
 2. **Clerk's box should open on Sign up**, not Sign in. Every new person's
    first action is Sign up and the link is small.
 3. ~~A test that drives `SupabaseSync`~~ — done in v48 (`test-supabase.js`).

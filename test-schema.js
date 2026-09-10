@@ -133,6 +133,17 @@ async function tryQuery(db, sql, params) {
   r = await tryQuery(db,
     `update public.enrolments set status='approved' where student_id='user_ben' returning *`);
   chk('teacher can approve a student', r.ok && r.rows.length === 1, r.err);
+  // v49 roster: the teacher moves a student in as approved, and removes one
+  r = await tryQuery(db,
+    `insert into public.enrolments (class_id, student_id, student_email, status)
+     values ('apcalcab','user_amy','amy@school.edu','approved') returning *`);
+  chk('teacher may move a student into a class as approved (roster)', r.ok && r.rows.length === 1, r.err);
+  r = await tryQuery(db,
+    `update public.enrolments set status='removed' where student_id='user_amy' and class_id='algebra2' returning status`);
+  chk('teacher may remove a student from a class (roster)', r.ok && r.rows.length === 1 && r.rows[0].status === 'removed', r.err);
+  r = await tryQuery(db,
+    `update public.enrolments set status='approved' where student_id='user_amy' and class_id='algebra2' returning status`);
+  chk('and let them back in', r.ok && r.rows.length === 1 && r.rows[0].status === 'approved', r.err);
   r = await tryQuery(db,
     `insert into public.sessions (class_id, teacher_at, teacher_name) values ('algebra2', now(), 'T')
      on conflict (class_id) do update set teacher_at = excluded.teacher_at returning *`);

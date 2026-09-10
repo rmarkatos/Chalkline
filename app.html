@@ -865,6 +865,8 @@ button{font:inherit;color:inherit}
 .waitrow{display:flex;align-items:center;gap:.6rem;padding:.35rem 0;flex-wrap:wrap}
 .waitrow .hintline{flex:1 1 14rem;min-width:0}
 .waitrow .btn{flex:0 0 auto}
+#rosterPanel .plabel + .plabel{margin-top:.6rem}
+.waitrow.gone .hintline{opacity:.7}
 </style>
 
 
@@ -880,7 +882,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v48</span></p>
+      <span class="ver">v49</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -921,7 +923,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v48</span></p>
+      <span class="ver">v49</span></p>
 
     <!-- Clerk's sign-in is mounted here, not opened as a modal — a modal
          vanished the moment you clicked outside it, before you had signed in -->
@@ -961,12 +963,13 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v48</span>
+      <span class="ver">v49</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
       <span class="clock" id="tClock" hidden></span>
       <button class="btn" id="tWaiting" hidden>Waiting</button>
+      <button class="btn" id="tRoster" hidden>Roster</button>
       <button class="btn" id="tPush">Push a problem</button>
       <button class="btn" id="tClose">Close the board</button>
       <button class="btn" id="tLeave">Leave</button>
@@ -986,6 +989,15 @@ button{font:inherit;color:inherit}
       <span class="plabel">Waiting to join</span>
       <div id="waitRows"></div>
     </div>
+    <!-- The roster (v49): who is in this class, with Remove and Move; and
+         who was removed, with a way back in. Teacher only, accounts only. -->
+    <div class="joinlink" id="rosterPanel" hidden>
+      <span class="plabel">Roster</span>
+      <span class="hintline" id="rosterNote"></span>
+      <div id="rosterRows"></div>
+      <span class="plabel" id="rosterGoneLabel" hidden>Not in this class</span>
+      <div id="rosterGone"></div>
+    </div>
     <div class="tiles" id="tiles"></div>
     <p class="empty" id="tEmpty">No student has joined <b id="tEmptyRoom"></b> yet.
       <span id="tEmptyHow">Open this file in another window, enter the same class
@@ -1001,7 +1013,7 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v48</span>
+    <span class="ver">v49</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -1125,7 +1137,7 @@ const CLASS_NAMES = {};
    throws "Cannot access X before initialization" — a blank page, or in this
    case an error banner. That has now happened five times. */
 let accountsReady = null;
-let waitChannel = null;
+let waitChannel = null, meChannel = null;
 let waitPoll = null, splashPoll = null;
 /* "time is up in the newest workspace". Lived beside the timer code until
    v40, when isFrozen() started reading it — and isFrozen() runs inside the
@@ -1199,7 +1211,7 @@ function normalRoom(room){
                       : (room || "ALG2").trim().toUpperCase();
 }
 let editorTarget = {mode:"idle"};
-let pubTimer = null, heartbeat = null, agoTimer = null, awayTimer = null;
+let pubTimer = null, heartbeat = null, agoTimer = null, awayTimer = null, stillInTimer = null;
 /* Opening a panel loads content into the editor, which renders, which would
    otherwise publish — writing a blank board over feedback that already exists.
    One render after a load is skipped for that reason. Declared here, with the
@@ -5399,6 +5411,7 @@ function join(asRole, room, name){
       publishNow();
       heartbeat = setInterval(publishNow, 8000);
       watchAway();
+      if(USE_ACCOUNTS) watchStillIn();
     });
 
   } else {
@@ -5419,6 +5432,8 @@ function join(asRole, room, name){
       renderWaiting();
       watchWaiting();
       startTeacherBeat();
+      document.getElementById("tRoster").hidden = false;
+      document.getElementById("rosterPanel").hidden = true;
     }
     sync.on("board", m => {
       // a leftover board from an earlier session is not a student in the room
@@ -5492,6 +5507,8 @@ function leave(){
   const wasTeacher = role === "teacher";
   if(wasTeacher) stopTeacherBeat();      // before role and room are cleared
   clearInterval(heartbeat); clearInterval(agoTimer); clearInterval(awayTimer); clearTimeout(pubTimer);
+  clearInterval(stillInTimer); stillInTimer = null;
+  const rp = document.getElementById("rosterPanel"); if(rp) rp.hidden = true;
   if(sync) sync.close();
   sync = null; role = null; boards.clear(); fbMap.clear(); ckMap.clear();
   clearTimeout(flushTimer); flushTimer = null; dirtyTiles.clear();
@@ -6441,6 +6458,7 @@ if(location.protocol === "file:"){
       document.getElementById("splashLeft").hidden = true;
       lastPlanKey = "";
       refreshSplash();
+      watchMyEnrolment();     // the splash poll stopped when the board opened; start it again
     };
     try{
       await startAccounts();
@@ -6793,7 +6811,8 @@ async function refreshSplash(){
    ever sent their own. */
 function watchMyEnrolment(){
   if(!supa || !clerk || !clerk.user) return;
-  supa.channel("me-" + clerk.user.id)
+  if(meChannel) try{ supa.removeChannel(meChannel); }catch(e){}   // called again after a leave
+  meChannel = supa.channel("me-" + clerk.user.id)
       .on("postgres_changes",
           {event: "*", schema: "public", table: "enrolments",
            filter: "student_id=eq." + clerk.user.id},
@@ -6845,11 +6864,20 @@ async function teacherPickClass(){
   const pick = document.getElementById("classPick");
   pick.innerHTML = "";
   const waiting = await loadPending();
+  // v49: how many are in each class, next to how many are waiting
+  const counts = {};
+  try{
+    const r = await supa.from("enrolments").select("class_id,status").eq("status", "approved");
+    (r.data || []).forEach(e => { counts[e.class_id] = (counts[e.class_id] || 0) + 1; });
+  }catch(e){}
   classes.forEach(c => {
     const n = waiting.filter(w => w.class_id === c.id).length;
+    const k = counts[c.id] || 0;
+    const bits = [k === 1 ? "1 student" : k + " students"];
+    if(n) bits.push(n + " waiting");
     const b = document.createElement("button");
     b.className = "btn big on";
-    b.textContent = c.name + (n ? "  (" + n + " waiting)" : "");
+    b.textContent = c.name + "  (" + bits.join(", ") + ")";
     b.onclick = () => join("teacher", c.id, "");
     pick.appendChild(b);
   });
@@ -6884,6 +6912,139 @@ function stopTeacherBeat(){
   if(USE_ACCOUNTS && supa && myRoom && role === "teacher")
     supa.from("sessions").update({teacher_at: null}).eq("class_id", myRoom)
         .then(() => {}, () => {});
+}
+
+/* ---- the roster (v49) --------------------------------------------------- */
+
+/* Ryan: "no list of who is approved, no way to remove someone, and a student
+   who picks the wrong class cannot be moved." The enrolments table and the
+   teacher's policy ("teachers decide enrolments", for all) already allow
+   every part of this; nothing in the database changed. */
+async function loadRoster(classId){
+  const r = await supa.from("enrolments")
+                      .select("id,class_id,student_id,student_name,student_email,status,decided_at")
+                      .eq("class_id", classId)
+                      .order("student_name");
+  noteError("reading the roster", r.error);
+  const meId = clerk && clerk.user ? clerk.user.id : null;
+  return (r.data || []).filter(e => e.student_id !== meId);     // never list yourself
+}
+function setEnrolment(id, status){
+  return supa.from("enrolments")
+             .update({status, decided_at: new Date().toISOString()})
+             .eq("id", id);
+}
+/* Moving a student: their row in this class becomes 'removed' (so the old
+   class is not offered to them again) and they are approved in the other —
+   an existing row there is updated, otherwise one is created. */
+async function moveStudent(e, toClass){
+  const r1 = await setEnrolment(e.id, "removed");
+  if(r1 && r1.error) return r1;
+  const have = await supa.from("enrolments").select("id").eq("class_id", toClass).eq("student_id", e.student_id);
+  if(have.data && have.data.length) return setEnrolment(have.data[0].id, "approved");
+  return supa.from("enrolments").insert({
+    class_id: toClass, student_id: e.student_id, student_name: e.student_name,
+    student_email: e.student_email, status: "approved", decided_at: new Date().toISOString()
+  });
+}
+/* A student taken out of the class leaves the wall at once rather than at
+   the next sweep. Their own page notices within a few seconds (watchStillIn). */
+async function dropBoardOf(studentId){
+  boards.delete(studentId); fbMap.delete(studentId); ckMap.delete(studentId);
+  drawTiles();
+  if(!supa || !myRoom) return;
+  try{ await supa.from("boards").delete().eq("class_id", myRoom).eq("student_id", studentId); }catch(e){}
+}
+let rosterKey = "";
+async function renderRoster(force){
+  if(!USE_ACCOUNTS || !amTeacher || !supa || role !== "teacher") return;
+  const panel = document.getElementById("rosterPanel");
+  if(!panel || panel.hidden) return;
+  const all = await loadRoster(myRoom);
+  const inClass = all.filter(e => e.status === "approved");
+  const gone = all.filter(e => e.status === "removed");
+  // the poll calls this too; do not rebuild buttons under a finger for nothing
+  const key = JSON.stringify(all.map(e => [e.id, e.status, e.student_name]));
+  if(!force && key === rosterKey) return;
+  rosterKey = key;
+  const others = Object.keys(CLASS_NAMES).filter(id => id !== myRoom);
+  document.getElementById("rosterNote").textContent = inClass.length
+    ? (inClass.length === 1 ? "1 student" : inClass.length + " students") + " in " + (CLASS_NAMES[myRoom] || myRoom)
+    : "Nobody is in this class yet. Students appear here once you approve them.";
+  const who = e => {
+    const sp = document.createElement("span");
+    sp.className = "hintline";
+    sp.textContent = (e.student_name || "A student") + " \u00b7 " + (e.student_email || "");
+    return sp;
+  };
+  const act = async (btnRow, fn) => {
+    btnRow.querySelectorAll("button").forEach(b => b.disabled = true);
+    const r = await fn();
+    if(r && r.error) reportError("changing the roster", r.error);
+    await renderRoster(true);
+    renderWaiting();
+  };
+  const rows = document.getElementById("rosterRows");
+  rows.innerHTML = "";
+  inClass.forEach(e => {
+    const row = document.createElement("div"); row.className = "waitrow";
+    row.appendChild(who(e));
+    others.forEach(o => {
+      const mv = document.createElement("button");
+      mv.className = "btn"; mv.textContent = "Move to " + (CLASS_NAMES[o] || o);
+      mv.onclick = () => act(row, async () => { const r = await moveStudent(e, o); dropBoardOf(e.student_id); return r; });
+      row.appendChild(mv);
+    });
+    const rm = document.createElement("button");
+    rm.className = "btn"; rm.textContent = "Remove";
+    rm.onclick = () => act(row, async () => { const r = await setEnrolment(e.id, "removed"); dropBoardOf(e.student_id); return r; });
+    row.appendChild(rm);
+    rows.appendChild(row);
+  });
+  const goneRows = document.getElementById("rosterGone");
+  goneRows.innerHTML = "";
+  document.getElementById("rosterGoneLabel").hidden = !gone.length;
+  gone.forEach(e => {
+    const row = document.createElement("div"); row.className = "waitrow gone";
+    row.appendChild(who(e));
+    const back = document.createElement("button");
+    back.className = "btn on"; back.textContent = "Let back in";
+    back.onclick = () => act(row, () => setEnrolment(e.id, "approved"));
+    row.appendChild(back);
+    goneRows.appendChild(row);
+  });
+}
+function toggleRoster(){
+  const panel = document.getElementById("rosterPanel");
+  panel.hidden = !panel.hidden;
+  rosterKey = "";
+  if(!panel.hidden) renderRoster(true);
+}
+document.getElementById("tRoster").addEventListener("click", toggleRoster);
+
+/* The student's side of it. A student taken out of a class mid-lesson would
+   otherwise keep writing into a board the rules now refuse, and see only an
+   error. So while on a board with accounts on, every few seconds ask whether
+   they are still approved here; if not, take them back to the class list
+   and say why. */
+function watchStillIn(){
+  clearInterval(stillInTimer);
+  stillInTimer = setInterval(async () => {
+    if(role !== "student" || !myRoom || !supa || !clerk || !clerk.user) return;
+    let r;
+    try{ r = await supa.from("enrolments").select("class_id,status").eq("class_id", myRoom); }catch(e){ return; }
+    if(!r || r.error) return;                   // a hiccup is not a removal
+    const mine = (r.data || []).find(e => e.class_id === myRoom);
+    if(mine && mine.status === "approved") return;
+    const was = CLASS_NAMES[myRoom] || myRoom;
+    leave();
+    document.getElementById("splashLeft").hidden = true;
+    lastPlanKey = "";
+    await refreshSplash();
+    watchMyEnrolment();     // the splash poll stopped when the board opened; start it again
+    document.getElementById("splashMsg").textContent =
+      "Your teacher has moved you out of " + was + ". Pick a class below.";
+  }, 6000);
 }
 
 /* ---- the approvals queue on the wall ----------------------------------- */
@@ -6948,7 +7109,7 @@ function watchWaiting(){
         () => renderWaiting())
     .subscribe();
   clearInterval(waitPoll);
-  waitPoll = setInterval(() => { if(role === "teacher") renderWaiting(); }, 5000);
+  waitPoll = setInterval(() => { if(role === "teacher"){ renderWaiting(); renderRoster(); } }, 5000);
 }
 
 /* ---- start-up ---------------------------------------------------------- */

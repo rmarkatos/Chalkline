@@ -255,6 +255,53 @@ function columnsFromSchema(sql){
   chk('signing in takes the box down and shows the classes',
       await until(nobody, () => document.getElementById('clerkAuth').hidden && document.querySelectorAll('#classPick button').length === 2));
 
+  // ---- the roster (v49) ---------------------------------------------------------
+  await teacher.click('#tRoster');
+  chk('the roster opens with both students, with emails',
+      await until(teacher, () => { const t = document.getElementById('rosterRows').textContent; return /Amy/.test(t) && /amy@test\.example/.test(t) && /Ben/.test(t); }));
+  chk('and says how many', await teacher.evaluate(() => /2 students in Algebra 2/.test(document.getElementById('rosterNote').textContent)),
+      await teacher.evaluate(() => document.getElementById('rosterNote').textContent));
+  chk('each student has Remove and Move to AP Calculus AB',
+      await teacher.evaluate(() => Array.from(document.querySelectorAll('#rosterRows .waitrow')).every(r => /Remove/.test(r.textContent) && /Move to AP Calculus AB/.test(r.textContent))));
+  // move Ben to the other class
+  await teacher.evaluate(() => { const r = Array.from(document.querySelectorAll('#rosterRows .waitrow')).find(x => /Ben/.test(x.textContent));
+                                 Array.from(r.querySelectorAll('button')).find(b => /Move to/.test(b.textContent)).click(); });
+  chk('moving Ben approves him in AP Calculus AB',
+      await until(teacher, () => window.__fakeSupa.store.enrolments.some(e => e.student_id === 'user_ben' && e.class_id === 'apcalcab' && e.status === 'approved')));
+  chk('…and marks his Algebra 2 row removed',
+      await teacher.evaluate(() => window.__fakeSupa.store.enrolments.some(e => e.student_id === 'user_ben' && e.class_id === 'algebra2' && e.status === 'removed')));
+  chk('the roster now lists Amy alone', await until(teacher, () => { const t = document.getElementById('rosterRows').textContent; return /Amy/.test(t) && !/Ben/.test(t); }));
+  chk('Ben appears under "Not in this class" with a way back',
+      await teacher.evaluate(() => !document.getElementById('rosterGoneLabel').hidden && /Ben/.test(document.getElementById('rosterGone').textContent) && /Let back in/.test(document.getElementById('rosterGone').textContent)));
+  chk('Ben\'s tile leaves the wall at once', await until(teacher, () => !Array.from(document.querySelectorAll('#tiles .tile')).some(t => /Ben/.test(t.textContent))));
+  chk('Ben\'s page sends him back to the class list and says why',
+      await until(ben, () => document.getElementById('viewBoard').hidden && /moved you out of Algebra 2/.test(document.getElementById('splashMsg').textContent), null, 12000),
+      await ben.evaluate(() => document.getElementById('splashMsg').textContent));
+  chk('…offering AP Calculus AB and not Algebra 2',
+      await until(ben, () => { const b = Array.from(document.querySelectorAll('#classPick button')).map(x => x.textContent); return b.includes('Open AP Calculus AB') && !b.some(t => /Algebra 2/.test(t)); }),
+      JSON.stringify(await buttons(ben)));
+  // remove Amy, then let her back in
+  await teacher.evaluate(() => { const r = Array.from(document.querySelectorAll('#rosterRows .waitrow')).find(x => /Amy/.test(x.textContent));
+                                 Array.from(r.querySelectorAll('button')).find(b => b.textContent === 'Remove').click(); });
+  chk('removing Amy marks her row removed', await until(teacher, () => window.__fakeSupa.store.enrolments.some(e => e.student_id === 'user_amy' && e.status === 'removed')));
+  chk('Amy is sent out of the board', await until(amy, () => document.getElementById('viewBoard').hidden && /moved you out/.test(document.getElementById('splashMsg').textContent), null, 12000));
+  chk('Amy is not offered Algebra 2 while removed', !(await buttons(amy)).some(t => /Algebra 2/.test(t)), JSON.stringify(await buttons(amy)));
+  await teacher.evaluate(() => { const r = Array.from(document.querySelectorAll('#rosterGone .waitrow')).find(x => /Amy/.test(x.textContent)); r.querySelector('button').click(); });
+  chk('"Let back in" approves her again',
+      await until(teacher, () => window.__fakeSupa.store.enrolments.some(e => e.student_id === 'user_amy' && e.class_id === 'algebra2' && e.status === 'approved')));
+  chk('…and the roster lists her again', await until(teacher, () => /Amy/.test(document.getElementById('rosterRows').textContent)));
+  chk('Amy is offered Algebra 2 again without refreshing', await until(amy, () => Array.from(document.querySelectorAll('#classPick button')).some(b => b.textContent === 'Open Algebra 2')));
+  await amy.click('text=Open Algebra 2');
+  chk('she is back on her board', await until(amy, () => !document.getElementById('viewBoard').hidden));
+  // the class picker counts students
+  await teacher.click('#tLeave');
+  chk('the class picker counts students in each class',
+      await until(teacher, () => { const b = Array.from(document.querySelectorAll('#classPick button')).map(x => x.textContent); return /Algebra 2 +\(1 student\)/.test(b[0] || '') && /AP Calculus AB +\(1 student\)/.test(b[1] || ''); }),
+      JSON.stringify(await buttons(teacher)));
+  await teacher.click('#classPick button');
+  await until(teacher, () => !document.getElementById('viewTeacher').hidden);
+  chk('Amy\'s tile is back on the wall', await until(teacher, () => Array.from(document.querySelectorAll('#tiles .tile')).some(t => /Amy/.test(t.textContent))));
+
   // ---- leaving, and ending the lesson -----------------------------------------
   await amy.click('#leaveBtn');
   chk('leaving shows the resting screen', await until(amy, () => !document.getElementById('splashLeft').hidden));
@@ -265,7 +312,6 @@ function columnsFromSchema(sql){
       await until(teacher, () => ['boards','feedback','checks','problems','timers','sessions'].every(t => !window.__fakeSupa.store[t].some(r => r.class_id === 'algebra2')), null, 12000),
       JSON.stringify(await teacher.evaluate(() => Object.fromEntries(['boards','feedback','checks','problems','timers','sessions'].map(t => [t, window.__fakeSupa.store[t].length])))));
   chk('but the roster survives', await teacher.evaluate(() => window.__fakeSupa.store.enrolments.filter(e => e.status === 'approved').length === 2));
-  chk('Ben is sent out', await until(ben, () => !document.getElementById('splashLeft').hidden));
   chk('the teacher is signed out of Clerk', await until(teacher, () => window.__fakeSignedOut === true));
 
   chk('no page threw', errs.length === 0, errs.join(' | '));
