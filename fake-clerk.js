@@ -15,8 +15,10 @@
     async load(){ this.loaded = true; this.session = this.user ? {getToken: async () => "fake.token." + this.user.id} : null; },
     async signOut(){ this.user = null; this.session = null; globalThis.__fakeSignedOut = true;
                      listeners.forEach(f => f({user:null, session:null})); },
-    mountSignIn(el){ el.textContent = "[Clerk sign-in box]"; el.dataset.mounted = "1"; },
+    mountSignIn(el, props){ el.textContent = "[Clerk sign-in box]"; el.dataset.mounted = "signin"; el.dataset.other = (props && props.signUpUrl) || ""; },
     unmountSignIn(el){ el.textContent = ""; delete el.dataset.mounted; },
+    mountSignUp(el, props){ el.textContent = "[Clerk sign-up box]"; el.dataset.mounted = "signup"; el.dataset.other = (props && props.signInUrl) || ""; },
+    unmountSignUp(el){ el.textContent = ""; delete el.dataset.mounted; },
     addListener(fn){ listeners.push(fn); return () => {}; },
     /* the test signs somebody in through the mounted box */
     __signIn(u){ this.user = mk(u); this.session = {getToken: async () => "fake.token." + u.id};

@@ -40,7 +40,7 @@ table or a row, only rewrites the policies.
 app with **no settings at all** — no Firebase, no Supabase, no Clerk. The tests
 drive it, so they never touch the real database or a real account.
 
-There is a version chip on screen (`v49` at the time of writing). **Bump it in
+There is a version chip on screen (`v50` at the time of writing). **Bump it in
 `app.html` on every ship — one ship, one bump.** Several hours were lost to
 not doing that once; then on 2026-09-04 about ten builds went out all
 labelled v28 and caused exactly the stale-page confusion the chip exists to
@@ -154,7 +154,7 @@ without a heartbeat and are swept, so an absent student never appears.
 
 ## Testing
 
-24 suites, ~790 assertions plus 500 generated round-trips.
+24 suites, ~800 assertions plus 500 generated round-trips.
 
 ```bash
 ./run-tests.sh            # everything
@@ -241,9 +241,9 @@ rules suites test yesterday's code.
 - **A stale page.** After a deploy, a normal reload can serve the previous
   build for a while. Half of one evening's confusion was a student window on
   the old build. `⌘⇧R`, or a fresh private window, before believing a bug.
-- **"Couldn't find your account."** Clerk's box defaults to *Sign in*; a new
-  person needs *Sign up*, the small link underneath. Every first-timer hits
-  this, Ryan included.
+- **"Couldn't find your account."** Clerk's box used to default to *Sign
+  in*, and every first-timer hit this. Since v50 a device that has never
+  signed in gets the *Sign up* box first, with two switches above it.
 - **Testing as a student on your own machine.** A Gmail address with a `+tag`
   (`name+test1@gmail.com`) is a separate account to Clerk but lands in the
   same inbox, so the verification code is readable. Use a private window —
@@ -322,6 +322,24 @@ board* clears only the workspace in use (`clearActive`). A new problem calls
 use until v46; now a tile shows every workspace and the open panel does too. `tex()` in the
 test hooks skips headings. `test-workspaces.js` drives two students and a
 teacher end to end.
+
+**v50 — Sign up first for a new device.** Ryan: "Lots of students will be
+creating an account and logging in for the first time." `mountAuth(kind)`
+mounts either `clerk.mountSignUp` or `clerk.mountSignIn` into `#clerkAuth`;
+`preferredAuthKind()` picks **sign up** unless `localStorage`
+`chalkline.signedInBefore` is set (written by `rememberSignedIn()` the
+moment anyone signs in on that device) or the address bar says
+`#auth=signin` / `#auth=signup`. Two switches above the box (`#authNew`
+"I'm new here", `#authHave` "I already have an account") call `mountAuth`
+directly; Clerk's own links under the box are given `signInUrl` /
+`signUpUrl` pointing at this page with `#auth=…`, and a `hashchange`
+listener swaps the box in place — so the link no longer leaves for Clerk's
+hosted page. `fake-clerk.js` gained `mountSignUp`/`unmountSignUp` and
+records the props. `test-supabase` (79 checks) opens a fresh device (the
+suite's pages share one profile, so the "nobody" page clears the flag
+first), asserts sign-up first, both switches, the hash-link switch, the
+flag being written on sign-in, and a later page on the same device opening
+on sign-in. Falsified: forcing sign-in first reds the first check.
 
 **v49 — the roster.** Ryan: "something small I did not think of but would
 be excellent." A **Roster** button on the wall (accounts only) opens
@@ -629,8 +647,7 @@ so it confirms their algebra. One family so far: **logarithmic**.
 ### Next
 
 1. ~~Roster management~~ — done in v49.
-2. **Clerk's box should open on Sign up**, not Sign in. Every new person's
-   first action is Sign up and the link is small.
+2. ~~Clerk's box should open on Sign up~~ — done in v50.
 3. ~~A test that drives `SupabaseSync`~~ — done in v48 (`test-supabase.js`).
    Worth extending as features land: every new column or message should get
    a check there, since the stand-in refuses unknown columns.

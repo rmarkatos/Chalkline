@@ -866,6 +866,8 @@ button{font:inherit;color:inherit}
 .waitrow .hintline{flex:1 1 14rem;min-width:0}
 .waitrow .btn{flex:0 0 auto}
 #rosterPanel .plabel + .plabel{margin-top:.6rem}
+.authpick{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin:0 0 12px}
+.authpick .btn.on{border-color:var(--accent); color:var(--accent-ink); background:var(--accent-soft)}
 .waitrow.gone .hintline{opacity:.7}
 </style>
 
@@ -882,7 +884,7 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v49</span></p>
+      <span class="ver">v50</span></p>
 
     <label class="fld"><span>Class code</span>
       <input id="roomInput" value="ALG2" spellcheck="false" autocomplete="off"></label>
@@ -923,10 +925,16 @@ button{font:inherit;color:inherit}
   <div class="join">
     <h1>Chalkline</h1>
     <p class="joinsub">Typing mathematics made user friendly
-      <span class="ver">v49</span></p>
+      <span class="ver">v50</span></p>
 
     <!-- Clerk's sign-in is mounted here, not opened as a modal — a modal
-         vanished the moment you clicked outside it, before you had signed in -->
+         vanished the moment you clicked outside it, before you had signed in.
+         v50: a device that has never signed in gets the SIGN UP box first;
+         the two buttons switch between the two, and so do Clerk's own links. -->
+    <div class="authpick" id="authPick" hidden>
+      <button class="btn" id="authNew" type="button">I'm new here</button>
+      <button class="btn" id="authHave" type="button">I already have an account</button>
+    </div>
     <div id="clerkAuth" hidden></div>
 
     <div id="splashPick">
@@ -963,7 +971,7 @@ button{font:inherit;color:inherit}
       <h1>Chalkline</h1>
       <span class="tag" id="tRoom"></span>
       <span class="conn" id="connChipT" hidden></span>
-      <span class="ver">v49</span>
+      <span class="ver">v50</span>
     </div>
     <div class="barbtns">
       <button class="btn" id="tTheme">Theme</button>
@@ -1013,7 +1021,7 @@ button{font:inherit;color:inherit}
     <span class="conn" id="connChipS" hidden></span>
     <span class="tag" id="teacherHere" hidden></span>
     <span class="clock" id="probClock" hidden></span>
-    <span class="ver">v49</span>
+    <span class="ver">v50</span>
   </div>
   <div class="barbtns">
     <button class="btn" id="themeBtn">Theme</button>
@@ -1129,7 +1137,7 @@ const SUPA_CONFIG  = window.CHALKLINE_SUPABASE || {};
    behaviour: type a class code, type a name, no sign-in. */
 const USE_ACCOUNTS = !!(CLERK_CONFIG.publishableKey && SUPA_CONFIG.url);
 let clerk = null, supa = null;
-let authMounted = false, authListenerAdded = false;
+let authMounted = false, authListenerAdded = false, authKind = "";
 let myEnrolments = [], amTeacher = false, pendingList = [];
 const CLASS_NAMES = {};
 /* These two live up here for the reason the comment above says: boot() runs
@@ -7118,6 +7126,47 @@ function watchWaiting(){
    that closes on an outside click, which stranded anyone who clicked beside
    it before signing in. A mounted SignIn cannot be dismissed, and it carries
    Clerk's full "forgot password -> code -> new password" flow. */
+/* Which box to show first (v50). Ryan: "Lots of students will be creating
+   an account and logging in for the first time." Clerk's box defaults to
+   Sign in, and every first-timer hit "Couldn't find your account" and had
+   to find the small Sign up link. So: a device that has never signed in
+   here gets the SIGN UP box; once anyone has signed in on it, Sign in. The
+   address bar can force either (#auth=signup / #auth=signin) — which is
+   also where Clerk's own "Already have an account? Sign in" link points,
+   so that link switches the box in place instead of leaving the site. */
+function rememberSignedIn(){ try{ localStorage.setItem("chalkline.signedInBefore", "1"); }catch(e){} }
+function signedInBefore(){ try{ return localStorage.getItem("chalkline.signedInBefore") === "1"; }catch(e){ return false; } }
+function preferredAuthKind(){
+  const m = /auth=(signin|signup)/.exec(location.hash);
+  if(m) return m[1];
+  return signedInBefore() ? "signin" : "signup";
+}
+function mountAuth(kind){
+  const box = document.getElementById("clerkAuth");
+  unmountAuth();
+  authKind = kind; authMounted = true;
+  const here = location.origin + location.pathname;
+  try{
+    if(kind === "signup") clerk.mountSignUp(box, {signInUrl: here + "#auth=signin"});
+    else clerk.mountSignIn(box, {signUpUrl: here + "#auth=signup"});
+  }catch(e){ reportError("showing sign-in", e); }
+  document.getElementById("authNew").classList.toggle("on", kind === "signup");
+  document.getElementById("authHave").classList.toggle("on", kind === "signin");
+}
+function unmountAuth(){
+  const box = document.getElementById("clerkAuth");
+  if(!authMounted) return;
+  try{ if(authKind === "signup") clerk.unmountSignUp(box); else clerk.unmountSignIn(box); }catch(e){}
+  authMounted = false; authKind = "";
+}
+document.getElementById("authNew").addEventListener("click", () => mountAuth("signup"));
+document.getElementById("authHave").addEventListener("click", () => mountAuth("signin"));
+// Clerk's own links under the box point at #auth=…; a hash change is all that happens
+window.addEventListener("hashchange", () => {
+  const m = /auth=(signin|signup)/.exec(location.hash);
+  if(m && authMounted && m[1] !== authKind) mountAuth(m[1]);
+});
+
 function showSignInPanel(){
   showScreen("splash");
   ["splashPick", "splashWait", "splashLeft"].forEach(id => { const e = document.getElementById(id); if(e) e.hidden = true; });
@@ -7125,17 +7174,17 @@ function showSignInPanel(){
   document.getElementById("splashOut").hidden = true;      // nothing to sign out of yet
   const box = document.getElementById("clerkAuth");
   box.hidden = false;
-  if(!authMounted){
-    authMounted = true;
-    try{ clerk.mountSignIn(box); }catch(e){ reportError("showing sign-in", e); }
-  }
+  document.getElementById("authPick").hidden = false;
+  if(!authMounted) mountAuth(preferredAuthKind());
   if(!authListenerAdded){
     authListenerAdded = true;
     clerk.addListener(res => {
       // the moment Clerk has a signed-in user, take down the box and go on
       if(res && res.user && authMounted){
-        try{ clerk.unmountSignIn(box); }catch(e){}
-        authMounted = false; box.hidden = true;
+        rememberSignedIn();
+        unmountAuth();
+        box.hidden = true;
+        document.getElementById("authPick").hidden = true;
         document.getElementById("splashOut").hidden = false;
         startAccounts();
       }
@@ -7145,7 +7194,9 @@ function showSignInPanel(){
 async function startAccounts(){
   await ensureAccounts();
   if(!clerk.user){ showSignInPanel(); return; }
+  rememberSignedIn();
   const box = document.getElementById("clerkAuth"); if(box) box.hidden = true;
+  const pick = document.getElementById("authPick"); if(pick) pick.hidden = true;
   document.getElementById("splashOut").hidden = false;
   await readMe();
   if(amTeacher){ await teacherPickClass(); return; }
@@ -7170,6 +7221,7 @@ window.__chalkline = {
   setAway: f => noteAway(!!f),
   awayText: ms => awayText(ms),
   version: () => APP_VERSION,
+  authKind: () => authKind,
   liveVersion: html => noteLiveVersion(html),
   timer: (s, e) => startTimer(s, e),
   locked: () => isLocked(),

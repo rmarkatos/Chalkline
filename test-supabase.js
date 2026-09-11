@@ -110,10 +110,13 @@ function columnsFromSchema(sql){
   await ctx.route('**://example.supabase.co/**', r => r.abort());   // nothing may reach a network
 
   const errs = [];
-  const open = async (user, sch) => {
+  const open = async (user, sch, fresh) => {
     const p = await ctx.newPage();
     p.on('pageerror', e => errs.push((user ? user.id : 'nobody') + ': ' + String(e.message).split('\n')[0]));
-    await p.addInitScript(({u, s}) => { window.__FAKE_USER = u; window.__FAKE_SCHEMA = s; }, {u:user, s:sch || schema});
+    // every page here shares one browser profile; "fresh" means a device nobody has signed in on
+    await p.addInitScript(({u, s, f}) => { window.__FAKE_USER = u; window.__FAKE_SCHEMA = s;
+                                           if(f) try{ localStorage.removeItem('chalkline.signedInBefore'); }catch(e){} },
+                          {u:user, s:sch || schema, f:!!fresh});
     await p.goto('file://' + TEMP);
     return p;
   };
@@ -248,12 +251,33 @@ function columnsFromSchema(sql){
   chk('and the tile comes back', await until(teacher, () => Array.from(document.querySelectorAll('#tiles .tile')).some(t => /Amy/.test(t.textContent))));
 
   // ---- nobody signed in: the mounted box, then a sign-in through it -------------
-  const nobody = await open(null);
-  chk('with nobody signed in, the sign-in box is mounted on the splash',
-      await until(nobody, () => { const b = document.getElementById('clerkAuth'); return !!b && !b.hidden && b.dataset.mounted === '1'; }));
+  const nobody = await open(null, null, true);
+  // v50: a device that has never signed in gets the SIGN UP box first
+  chk('with nobody signed in, the SIGN UP box is mounted on the splash',
+      await until(nobody, () => { const b = document.getElementById('clerkAuth'); return !!b && !b.hidden && b.dataset.mounted === 'signup'; }),
+      await nobody.evaluate(() => JSON.stringify(document.getElementById('clerkAuth').dataset)));
+  chk('the two switches are shown, with "I\'m new here" lit',
+      await nobody.evaluate(() => !document.getElementById('authPick').hidden && document.getElementById('authNew').classList.contains('on') && !document.getElementById('authHave').classList.contains('on')));
+  chk('Clerk\'s own "Sign in" link points back at this page',
+      await nobody.evaluate(() => /#auth=signin$/.test(document.getElementById('clerkAuth').dataset.other)));
+  await nobody.click('#authHave');
+  chk('"I already have an account" switches to the sign-in box',
+      await until(nobody, () => document.getElementById('clerkAuth').dataset.mounted === 'signin' && document.getElementById('authHave').classList.contains('on')));
+  // Clerk's own link under the box only changes the hash; that must switch the box too
+  await nobody.evaluate(() => { location.hash = 'auth=signup'; });
+  chk('the link under the box (a hash change) switches back to sign-up',
+      await until(nobody, () => document.getElementById('clerkAuth').dataset.mounted === 'signup'));
   await nobody.evaluate(() => window.Clerk.__signIn({id:'user_cara', email:'cara@test.example', firstName:'Cara'}));
-  chk('signing in takes the box down and shows the classes',
-      await until(nobody, () => document.getElementById('clerkAuth').hidden && document.querySelectorAll('#classPick button').length === 2));
+  chk('signing in takes the box and the switches down and shows the classes',
+      await until(nobody, () => document.getElementById('clerkAuth').hidden && document.getElementById('authPick').hidden && document.querySelectorAll('#classPick button').length === 2));
+  chk('the device remembers that somebody has signed in here',
+      await nobody.evaluate(() => localStorage.getItem('chalkline.signedInBefore') === '1'));
+  // the same browser, later: the SIGN IN box comes first
+  const again = await open(null);
+  chk('a device that has signed in before gets the SIGN IN box first',
+      await until(again, () => { const b = document.getElementById('clerkAuth'); return !!b && !b.hidden && b.dataset.mounted === 'signin'; }),
+      await again.evaluate(() => JSON.stringify(document.getElementById('clerkAuth').dataset)));
+  await again.close();
 
   // ---- the roster (v49) ---------------------------------------------------------
   await teacher.click('#tRoster');
